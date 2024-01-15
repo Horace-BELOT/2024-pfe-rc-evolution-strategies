@@ -4,6 +4,16 @@ how the system functions and how to implement it.
 """
 from typing import Callable
 import numpy as np
+import sys
+import os
+
+from sklearn.linear_model import SGDClassifier
+try:  # Fixing import problems
+    if "pyESN.py" not in os.listdir(sys.path[0]):
+        upper_folder: str = "\\".join(sys.path[0].split("\\")[:-1])
+        sys.path.append(upper_folder)
+except:
+    pass
 
 class ToyExampleNES:
     def __init__(

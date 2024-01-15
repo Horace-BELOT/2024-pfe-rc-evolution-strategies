@@ -1,0 +1,147 @@
+"""
+The dimensions of the matrix are:
+- W_in (input layer matrix) => n_reservoir x n_inputs
+- W (reservoir connectivity matrix) => n_reservoir x n_reservoir
+- W_out (output layer) => n_outputs x n_reservoir
+
+The update formula is:
+x[n + 1] = activation(W * x[n] + W_in * u(n + 1) + W_fb * y[n])
+
+"""
+
+import numpy as np
+from tqdm import tqdm
+from sklearn.base import BaseEstimator
+from utils import * 
+from RLS import RLS
+from typing import Callable
+
+
+class ESN:
+
+    def __init__(self, n_inputs: int, n_outputs: int, n_reservoir: int = 50,
+                 spectral_radius: float = 0.95, sparsity: float = 0,
+                 leaky_rate: float = 0, noise: float = 0.0, 
+                 state_activ_fx: Callable[[np.ndarray], np.ndarray] = np.tanh, 
+                 out_activ: Callable[[np.ndarray], np.ndarray] = identity,
+                 out_activ_inv: Callable[[np.ndarray], np.ndarray] = identity,
+                 input_scaling: float = 1, feedback_scaling: float = 0.0,
+                 random_state: int = None, wash_out: int = 1, silent: bool = True):
+        self.n_inputs: int = n_inputs
+        self.n_outputs: int = n_outputs
+        self.n_reservoir: int = n_reservoir
+        self.spectral_radius: float = spectral_radius
+        self.sparsity: float = sparsity
+        self.leaky_rate: float = leaky_rate
+        self.noise: float = noise
+        self.state_activ_fx: Callable[[np.ndarray], np.ndarray] = state_activ_fx
+        self.out_activ: Callable[[np.ndarray], np.ndarray] = out_activ
+        self.out_activ_inv: Callable[[np.ndarray], np.ndarray] = out_activ_inv
+        self.silent: bool = silent
+        self.wash_out: int = wash_out
+        self.input_scaling: float = input_scaling
+        self.feedback_scaling: float = feedback_scaling
+
+        self.W: np.ndarray  # Reservoir connectivity matrix
+        self.W_in: np.ndarray  # Input layer matrix
+        self.W_out: np.ndarray  # Output layer matrix (shape = n_outputs x )
+        self.W_fb: np.ndarray  # Feedback connectivity array
+        self.states: np.ndarray  # list of consecutive reservoir states (N x n_reservoir)
+        self.extended_states: np.ndarray  # states + inputs (N x (n_reservoir + n_inputs))
+
+        self.build_matrixes()
+
+    def build_matrixes(self):
+        """
+        
+        """
+        ## Builds the reservoir matrix
+        # Initiate the connectivity matrix with a uniform law in [-0.5, 0.5]
+        self.W: np.ndarray = np.random.rand(self.n_reservoir, self.n_reservoir) - 0.5
+        # We force the sparsity of the matrix to the given value
+        self.W[np.random.rand(self.n_reservoir, self.n_reservoir) < self.sparsity] = 0
+        # We then force the spectral radius to the given value
+        radius_w: float = np.max(np.abs(np.linalg.eigvals(self.W)))
+        self.W = self.W * self.spectral_radius / radius_w
+
+        ## Builds the input matrix
+        # Dimensions are (n_reservoir, n_inputs)
+        self.W_in = np.random.rand(self.n_reservoir, self.n_inputs) * 2 - 1
+        self.W_in *= self.input_scaling
+
+        ## Builds the feedback matrix
+        # Dimensions are (n_reservoir, n_outputs)
+        self.W_fb = np.random.rand(self.n_reservoir, self.n_outputs) * 2 - 1
+        self.W_fb *= self.feedback_scaling
+
+    def _update(self, state: np.ndarray, input: np.ndarray, output: np.ndarray) -> np.ndarray:
+        """
+        Args:
+            state: np.ndarray of current reservoir state (length of array is n_reservoir)
+            input: np.ndarray of inputs (shape = (n_inputs, 1))
+        
+        Returns:
+            the reservoir updated state after being fed the given inputs     
+        """
+        preactivation: np.ndarray = (
+            np.dot(self.W, state) + 
+            np.dot(self.W_in, input) + 
+            np.dot(self.W_fb, output)
+        )
+        # We are going to use a normal white noise matrix
+        noise_matrix: np.ndarray = np.random.normal(scale=self.noise, size=self.n_reservoir)
+        return self.leaky_rate * state + noise_matrix + self.state_activ_fx(preactivation)
+        
+    def fit(self, inputs: np.ndarray, outputs: np.ndarray) -> np.ndarray:
+        """
+        Feeds all the inputs to the network and harvests the resulting states
+
+        Args:
+            inputs: np.ndarray of inputs of shape (N x n_inputs)
+            outputs: np.ndarray of outputs of shape (N x n_outputs)
+        Returns:
+
+        """
+        ### First we need to reshape potentially ill-shaped inputs.
+        if inputs.ndim < 2: inputs = np.reshape(inputs, (len(inputs), -1))
+        if inputs.shape[1] != self.n_inputs: 
+            raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_inputs})")
+        if outputs.ndim < 2: outputs = np.reshape(outputs, (len(outputs), -1))
+        if outputs.shape[1] != self.n_outputs: 
+            raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_outputs})")
+        # Checking if inputs and outputs have the same size
+        if outputs.shape[0] != inputs.shape[0]:
+            raise ValueError("Inputs and Outputs have different shapes ()")
+        n: int = inputs.shape[0]
+
+        ### Feeding the network and harvesting states
+        if not self.silent: print("[INFO] Harvesting states...")
+        self.states: np.ndarray = np.zeros(shape=(n, self.n_reservoir))
+        pbar  = tqdm(range(1, n), disable=self.silent)  # Progress bar
+        for k in pbar:
+            self.states[k, :] = self._update(self.states[k - 1], inputs[k, :], outputs[k - 1, :])
+            # Keeping track of max coeff to be sure that no divergence occurs
+            max_res: float = np.abs(self.states[k, :]).max()
+            pbar.set_description(f"Step {k}/{n}. Max in reservoir = {max_res:.2f}")
+
+        ### Training output matrix (readout layer)
+        if not self.silent: print("[INFO] Training Readout Layer...")
+        ## Preparing data
+        x: np.ndarray = np.hstack([self.states, inputs])  # inputs of training is states + inputs
+        self.extended_states = x
+        x = x[self.wash_out:, :]  # removing first steps
+        y: np.ndarray = self.out_activ_inv(outputs[self.wash_out:, :])
+
+        ## Training data
+        self.W_out = pinv(x, y)
+
+        ## Predicting (we need to the full states without washout)
+        pred_train: np.ndarray = self.out_activ(np.dot(self.extended_states, self.W_out.T))
+        return pred_train
+
+
+
+
+
+    
+

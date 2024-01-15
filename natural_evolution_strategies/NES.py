@@ -18,7 +18,20 @@ class NES:
             sigma: float = 0.1, # noise standard deviation
             alpha: float = 0.001, # learning rate
         ):
-        """"""
+        """
+        Args
+            w: np.ndarray
+                Array to optimize
+            f: Callable[[np.ndarray] -> float]
+                Reward function that will be maximized
+            pop: int
+                Population size
+            sigma: float
+                Spread noise of the new generation from the precendent
+            alpha: float
+                Learning rate
+
+        """
         self.pop: int = pop
         self.sigma: float = sigma
         self.alpha: float = alpha

@@ -80,9 +80,29 @@ def pinv(X, Y):
     return np.dot(np.linalg.pinv(X), Y).T
 
 
-def split_set(x: np.ndarray, y: np.ndarray,) -> list[tuple[np.ndarray, np.ndarray]]:
+def split_set(x: np.ndarray, n: int) -> list[np.ndarray]:
     """
+    Splits an array in n parts that are almost all equals. 
+    (Only the last split will include the remainder and might be larger).
+    The number of COLUMNS of the input array stays constant
+    
+    Args:
+        x: np.ndarray
+            Input array to split
+        n: int
+            Number of splits
+    
+    Returns
+        list[np.ndarray]
+            List of arrays resulting from the split
     """
+    rows_per_splits: int = x.shape[0] // n
+    out: list[np.ndarray] = []
+    for k in range(n - 1):
+        out.append(x[k * rows_per_splits:(k + 1) * rows_per_splits, :])
+    out.append(x[(n - 1) * rows_per_splits:, :])
+    return out
+
 
 class MnistDataloader(object):
     """
