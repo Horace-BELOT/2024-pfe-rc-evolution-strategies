@@ -175,13 +175,14 @@ class ESN:
 
         ### Feeding the network and harvesting states
         if not self.silent: print("[INFO] Harvesting states...")
-        self.states: np.ndarray = np.zeros(shape=(n, self.n_reservoir))
+        states: np.ndarray = np.zeros(shape=(n, self.n_reservoir))
         pbar  = tqdm(range(1, n), disable=self.silent)  # Progress bar
         for k in pbar:
-            self.states[k, :] = self._update(self.states[k - 1], inputs[k, :], outputs[k - 1, :])
+            states[k, :] = self._update(states[k - 1], inputs[k, :], outputs[k - 1, :])
             # Keeping track of max coeff to be sure that no divergence occurs
             # max_res: float = np.abs(self.states[k, :]).max()
             # pbar.set_description(f"Step {k}/{n}. Max in reservoir = {max_res:.2f}")
+        self.states = states
 
         ### Training output matrix (readout layer)
         if not self.silent: print("[INFO] Training Readout Layer...")
@@ -231,9 +232,10 @@ class ESN:
         outputs = np.vstack([last_output, np.zeros([n, self.n_outputs])])
 
         for k in tqdm(range(n), disable=self.silent):
-            states[k + 1, :] = self._update(self.states[k], inputs[k + 1, :], outputs[k, :])
+            states[k + 1, :] = self._update(states[k, :], inputs[k + 1, :], outputs[k, :])
             # outputs[k + 1, :] = self.out_activ(np.dot(
             #     self.W_out, np.concatenate([states[k + 1, :], inputs[k + 1, :]])))
+        self.states = states
         extended_states = np.hstack([states[1:, :], inputs[1:, :]])
         return self.out_activ(np.dot(extended_states, self.W_out.T))
         # return self.out_activ(outputs[1:])

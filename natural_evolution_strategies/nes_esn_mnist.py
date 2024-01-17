@@ -15,6 +15,7 @@ from pyESN import ESN
 from utils import split_set, MnistDataloader, accuracy
 from natural_evolution_strategies.NES import NES
 import numpy as np
+from sklearn.metrics import mean_squared_error
 
 
 def load_mnist():
@@ -31,29 +32,37 @@ def load_mnist():
 
 def test1():
     (x_train, y_train), (x_test, y_test) = load_mnist()
-    esn_args = {
-        "n_inputs": 28*28,
-        "n_outputs": 10,
-        "n_reservoir": 500,
-        "sparsity": 0.9,
-        "spectral_radius": 0.9,
-        "W_in_scaling": 0.5,
-        "learn_method": "pinv", 
-        "random_state": 9,
-    }
-
-    esn = ESN(**esn_args)
-
+    esn = ESN(
+        n_inputs=28*28,
+        n_outputs=10,
+        spectral_radius=0.8,
+        n_reservoir=20,
+        sparsity=0.5,
+        silent=False,
+        input_scaling=0.7,
+        feedback_scaling=0.2,
+        wash_out=25,
+        learn_method="sgd",
+        learning_rate=0.00001
+    )
+    # def f_reward(x: np.ndarray) -> float:
+    #     esn_temp = ESN(**esn_args)
+    #     esn_temp.W_in = x
+    #     pred_train = esn.fit(x_test, y_test)
+    #     return accuracy(pred_train, y_test)
+    w_base = esn.W_in
     def f_reward(x: np.ndarray) -> float:
-        esn_temp = ESN(**esn_args)
-        esn_temp.W_in = x
-        pred_train = esn.fit(x_test, y_test)
-        return accuracy(pred_train, y_test)
+        esn.W_in = x
+        pred_test = esn.predict(x_test)
+        return mean_squared_error(y_test, pred_test)
+
+    esn.fit(x_train[:5000], y_train[:5000])
+    esn.silent = True
 
     nes = NES(
         w=esn.W_in,
         f=f_reward,
-        pop=5,
+        pop=3,
         sigma=0.01,
         alpha=0.001,
     )

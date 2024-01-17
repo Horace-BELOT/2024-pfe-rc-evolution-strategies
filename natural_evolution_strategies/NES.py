@@ -35,7 +35,7 @@ class NES:
         self.pop: int = pop
         self.sigma: float = sigma
         self.alpha: float = alpha
-        self.w: np.ndarray = w
+        self.w: np.ndarray = w.copy()
         self.f = f
         
     def step(self):
@@ -86,8 +86,10 @@ class NES:
                 Whether to print results or not
         """
         results = np.zeros(n_iter)
-        for i in tqdm(range(n_iter), disable=silent):
+        pbar = tqdm(range(n_iter), disable=silent)
+        for i in pbar:
             results[i] = self.step()
+            pbar.set_description(f"Current accuracy: {results[i]}")
         return results
     
 
