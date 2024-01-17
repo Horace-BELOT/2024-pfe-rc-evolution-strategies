@@ -16,7 +16,7 @@ from utils import *
 from RLS import RLS
 from typing import Callable, Literal, Optional
 
-Learning_Method = Literal["pinv", "ridge", "pinv_ridge",]
+Learning_Method = Literal["pinv", "pinv_ridge", "sgd", "sgd_ridge"]
 
 class ESN:
 
@@ -51,6 +51,7 @@ class ESN:
         [Training]
             learn_method: "pinv", "pinv_ridge", "sgd", "sgd_ridge"
             ridge_noise: ridge regression noise (regularization)
+            
         """
         # Constants / network characteristics
         self.n_inputs: int = n_inputs
