@@ -144,6 +144,17 @@ def split_set(x: np.ndarray, n: int) -> list[np.ndarray]:
     return out
 
 
+def accuracy(y_pred: np.ndarray, y_true: np.ndarray) -> float:
+    n, _ = y_pred.shape
+    m, _ = y_true.shape
+    if n != m:
+        raise ValueError(f"Predicted data and True data dont have the same dimension: {n} != {m}")
+    labels_pred: np.ndarray = np.array([np.argmax(y_pred[k]) for k in range(n)])
+    labels_true: np.ndarray = np.array([np.argmax(y_true[k]) for k in range(n)])
+    acc: float = np.sum(labels_pred == labels_true) / n
+    return acc
+
+
 class MnistDataloader(object):
     """
     Source:

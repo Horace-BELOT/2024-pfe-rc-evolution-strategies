@@ -12,7 +12,7 @@ try:  # Fixing import problems
 except:
     pass
 from pyESN import ESN
-from utils import split_set, MnistDataloader
+from utils import split_set, MnistDataloader, accuracy
 from natural_evolution_strategies.NES import NES
 import numpy as np
 
@@ -25,19 +25,8 @@ def load_mnist():
     test_images_filepath = os.path.join(input_path, 't10k-images-idx3-ubyte/t10k-images-idx3-ubyte')
     test_labels_filepath = os.path.join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
     mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
-    (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data()
+    (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(normalize=True)
     return (x_train, y_train), (x_test, y_test)
-
-
-def accuracy(y_pred: np.ndarray, y_true: np.ndarray) -> float:
-    n, _ = y_pred.shape
-    m, _ = y_true.shape
-    if n != m:
-        raise ValueError(f"Predicted data and True data dont have the same dimension: {n} != {m}")
-    labels_pred: np.ndarray = np.array([np.argmax(y_pred[k]) for k in range(n)])
-    labels_true: np.ndarray = np.array([np.argmax(y_true[k]) for k in range(n)])
-    acc: float = np.sum(labels_pred == labels_true) / n
-    return acc
 
 
 def test1():

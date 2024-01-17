@@ -10,20 +10,12 @@ try:  # Fixing import problems
 except:
     pass
 from pyESN import ESN
-from utils import MnistDataloader
+from utils import MnistDataloader, accuracy
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def accuracy(y_pred: np.ndarray, y_true: np.ndarray) -> float:
-    n, _ = y_pred.shape
-    m, _ = y_true.shape
-    if n != m:
-        raise ValueError(f"Predicted data and True data dont have the same dimension: {n} != {m}")
-    labels_pred: np.ndarray = np.array([np.argmax(y_pred[k]) for k in range(n)])
-    labels_true: np.ndarray = np.array([np.argmax(y_true[k]) for k in range(n)])
-    acc: float = np.sum(labels_pred == labels_true) / n
-    return acc
+
 
 
 class DataCreator:
@@ -86,7 +78,8 @@ class ESNtest:
             feedback_scaling=1,
             leaky_rate=0,
             noise=0,
-            wash_out=10
+            wash_out=10,
+            random_state=13  # random number
         )
         y_pred = esn.fit(inputs=x, outputs=y)
         mse = ((y - y_pred)**2).mean()

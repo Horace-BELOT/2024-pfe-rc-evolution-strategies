@@ -14,7 +14,7 @@ from tqdm import tqdm
 from sklearn.base import BaseEstimator
 from utils import * 
 from RLS import RLS
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal, Optional, Union
 
 Learning_Method = Literal["pinv", "pinv_ridge", "sgd", "sgd_ridge"]
 
@@ -47,10 +47,18 @@ class ESN:
             leaky_rate: leaky rate of Leaky-Integrator ESN (LIESN), used to improve STM
         
         [Scaling]
+            input_scaling: factor that input weights array W_in will be multiplied by
+            feedback_scaling: factor that output weights array W_fb will be multiplied by
+
 
         [Training]
             learn_method: "pinv", "pinv_ridge", "sgd", "sgd_ridge"
+            learning_rate: learning rate used for SGD
             ridge_noise: ridge regression noise (regularization)
+
+        [Misc]
+            silent: whether or not to print updates on execution
+            random_state: seed for reservoir, input layer and feedback layer initialization
             
         """
         # Constants / network characteristics
@@ -73,6 +81,19 @@ class ESN:
         self.ridge_noise: Optional[float] = ridge_noise
         self.learning_rate: float = learning_rate
 
+        # Misc
+        self.silent: bool = silent  # Whether or not to print things / show tqdm bar
+        self.random_state_: np.random.RandomState
+        if isinstance(random_state, np.random.RandomState):
+            self.random_state_ = random_state
+        elif random_state:
+            try:
+                self.random_state_ = np.random.RandomState(random_state)
+            except TypeError as e:
+                raise Exception("Invalid seed: " + str(e))
+        else:
+            self.random_state_ = np.random.mtrand._rand
+
         # Network components
         self.W: np.ndarray  # Reservoir connectivity matrix
         self.W_in: np.ndarray  # Input layer matrix
@@ -80,9 +101,6 @@ class ESN:
         self.W_fb: np.ndarray  # Feedback connectivity array
         self.states: np.ndarray  # list of consecutive reservoir states (N x n_reservoir)
         self.extended_states: np.ndarray  # states + inputs (N x (n_reservoir + n_inputs))
-
-        # Misc
-        self.silent: bool = silent  # Whether or not to print things / show tqdm bar
 
         self.build_matrixes()
 
@@ -95,21 +113,21 @@ class ESN:
         """
         ## Builds the reservoir matrix
         # Initiate the connectivity matrix with a uniform law in [-0.5, 0.5]
-        self.W: np.ndarray = np.random.rand(self.n_reservoir, self.n_reservoir) - 0.5
+        self.W = self.random_state_.rand(self.n_reservoir, self.n_reservoir) - 0.5
         # We force the sparsity of the matrix to the given value
-        self.W[np.random.rand(self.n_reservoir, self.n_reservoir) < self.sparsity] = 0
+        self.W[self.random_state_.rand(self.n_reservoir, self.n_reservoir) < self.sparsity] = 0
         # We then force the spectral radius to the given value
         radius_w: float = np.max(np.abs(np.linalg.eigvals(self.W)))
         self.W = self.W * (self.spectral_radius / radius_w)
 
         ## Builds the input matrix
         # Dimensions are (n_reservoir, n_inputs)
-        self.W_in = np.random.rand(self.n_reservoir, self.n_inputs) * 2 - 1
+        self.W_in = self.random_state_.rand(self.n_reservoir, self.n_inputs) * 2 - 1
         self.W_in *= self.input_scaling
 
         ## Builds the feedback matrix
         # Dimensions are (n_reservoir, n_outputs)
-        self.W_fb = np.random.rand(self.n_reservoir, self.n_outputs) * 2 - 1
+        self.W_fb = self.random_state_.rand(self.n_reservoir, self.n_outputs) * 2 - 1
         self.W_fb *= self.feedback_scaling
 
         ## Initialize the output layer
