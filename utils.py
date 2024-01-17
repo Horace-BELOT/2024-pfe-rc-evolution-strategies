@@ -11,6 +11,7 @@ from array import array
 from os.path import join
 import matplotlib.pyplot as plt
 import random
+from typing import Optional
 
 
 
@@ -73,11 +74,45 @@ def ridge(X, Y, ridge_noise):
     return np.dot(np.dot(Y.T, X), np.linalg.inv(np.dot(X.T, X) + ridge_noise*np.eye(X.shape[1])))
 
 
-def pinv(X, Y):
+def pinv(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
     '''Compute readout weights matrix [Moore-Penrose Pseudo Inverse]
     Args & Returns: Same as self._ridge()
     '''
     return np.dot(np.linalg.pinv(X), Y).T
+
+
+def sgd(
+        X: np.ndarray, 
+        Y: np.ndarray,
+        alpha: float, 
+        W_init: Optional[np.ndarray] = None,
+        lambda_ridge: float = 0,
+        ) -> np.ndarray:
+    """
+    Computes simple Stochastic Gradient Descent at learning rate alpha
+    Args:
+        X: np.ndarray, inputs with shape (N, n_inputs)
+        Y: np.ndarray, targets with shape (N, n_outputs)
+        alpha: float, learning rate
+        W_init: weight matrix starting point
+        lambda_ridge: float
+    Returns:
+        np.ndarray, fitted weights matrix A such that AX - Y is minimized 
+    """
+    n: int = X.shape[0]
+    n_inputs: int = X.shape[1]
+    n_outputs: int = Y.shape[1]
+    A: np.ndarray = np.zeros(shape=(n_outputs, n_inputs))
+    if W_init is not None:
+        A = W_init.copy()
+    
+    for i in range(n):
+        gradient: np.ndarray = 2 * (
+            np.dot(X[i, :], np.dot(A, X[i, :]) - Y[i, :]) +
+            lambda_ridge * A
+        )
+        A -= alpha * gradient
+    return A
 
 
 def split_set(x: np.ndarray, n: int) -> list[np.ndarray]:

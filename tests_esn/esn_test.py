@@ -1,6 +1,4 @@
-"""
-This file includes test in a notebook-style fashion in order to explore the ESN capabilities
-"""
+""""""
 import sys
 import os
 
@@ -28,33 +26,28 @@ def accuracy(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     return acc
 
 
-def generate_mackey_glass(args: dict):
-    from jitcdde import jitcdde, y, t
-    import numpy as np
-    τ = args["mg_tau"]
-    n = args["mg_n"]
-    β = args["mg_beta"]
-    γ = args["mg_gamma"]
-    history = args["mg_history"]
-    stepsize = args["mg_T"]  # fixed for the moment (check, if smaller values are required)
-    length = args["series_length"]
+class DataCreator:
+    def simple_sinus(length: int = 1000, f: float = 0.2):
+        """
+        Args:
+            length (int): length of input/output signals
+            f (float): frequency of the sinus
+        Returns:
+            input and output array for the test
+        """
+        x: np.ndarray = np.zeros(shape=(length, 1))
+        y: np.ndarray = 0.5 * np.sin(f * np.linspace(1, length, length))
+        return x, y
 
-    f = [β * y(0, t - τ) / (1 + y(0, t - τ) ** n) - γ * y(0)]
-    DDE = jitcdde(f)
-    DDE.set_integration_parameters(atol=1.0e-16, rtol=1.0e-10)  # min_step = 1.0e-15
+    def periodic_signal(length: int = 1000, period: int = 5) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Creates an empty input signal, and an output signal of evenly spaced spikes.
+        """
+        x: np.ndarray = np.zeros((length, 1))
+        y: np.ndarray = np.zeros((length, 1))
+        y[[k for k in range(length) if k % period == 0]] = 1
+        return x, y
 
-    DDE.constant_past([history])
-    # DDE.step_on_discontinuities()
-    DDE.integrate_blindly(0.0)  # This gives the results comparable to the MATLAB dde23 solver
-
-    data = []
-    for time in np.arange(DDE.t, DDE.t + length, stepsize):
-        data.append(DDE.integrate(time))
-
-    return np.array(data).squeeze()
-
-class DataLoader:
-    
     def load_mnist():
         """Loads the MNIST dataset"""
         input_path = 'data'
@@ -66,143 +59,127 @@ class DataLoader:
         (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data()
         return (x_train, y_train), (x_test, y_test)
     
-    def periodic_signal(length: int = 1000, period: int = 5) -> tuple[np.ndarray, np.ndarray]:
-        """
-        
-        """
-        x: np.ndarray = np.ones(length)
-        y: np.ndarray = np.zeros(length)
-        y[[k for k in range(length) if k % period == 0]] = 1
-        return x, y
-
-    def delay_timeseries(n: int = 5, length: int = 10000, pct_signal: float = 0.02) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Creates a timeseries where if x[i] = 1, y[i + n] = 1 otherwise x and y = 0
-        Inputs:
-            n: int
-                delay between input and response
-            length: int
-                length of input / output array
-            pct_signal: float
-                percent of point which are signal points
-        """
-        if pct_signal > 1 or pct_signal < 0: raise ValueError("pct_signal has to be in [0,1]") 
-        if n < 0: raise ValueError("n must be > 0")
-        n_points_signal: int = int(length * pct_signal)
-        indices_signals: np.ndarray = np.random.choice(length, size=n_points_signal, replace=False)
-        
-        x: np.ndarray = np.zeros(length)
-        x[indices_signals] = 1
-        y: np.ndarray = np.zeros(length)
-        y[[k + n for k in indices_signals if k + n < length]] = 1
-
-        return x, y
-
-
-
 
 class ESNtest:
-
-    def test1():
+    def test_sinus():
         """
+        This tests is described here:
+        https://sergiopeignier.github.io/teaching/python/leaky-echo-state.pdf
+
+        The idea is to put a sinus signal as target and nothing as input and that the network only learns
+        from the feedback.
+        y_target(n) = 0.5 . sin(n . 0.2)
+        x(n) = 0 for every n
+        """
+        n: int = 1000
+        f: float = 0.2
+        x, y = DataCreator.simple_sinus(length=1000, f=0.2)
+
+        esn = ESN(
+            n_inputs=1,
+            n_outputs=1,
+            n_reservoir=20,
+            spectral_radius=0.8,
+            sparsity=0.5,
+            silent=False,
+            input_scaling=0,
+            feedback_scaling=1,
+            leaky_rate=0,
+            noise=0,
+            wash_out=10
+        )
+        y_pred = esn.fit(inputs=x, outputs=y)
+        mse = ((y - y_pred)**2).mean()
+        plt.plot(y, label="real")
+        plt.plot(y_pred, label="pred")
+        plt.title("Sine wave generator ESN")
+        plt.show()
+        print(f"Loss: {mse:.2f}")
+        return
+
+
+    def test_periodic_signal():
+        """
+        The goal of this test is to measure the ESN capability to learn to predict a flat signal
+        with only periodic spikes every N inputs.
+        This is to test the memory capability of the ESN.
+        """
+        x, y = DataCreator.periodic_signal(length=1000, period=10)
+        esn_args = {
+            "n_inputs": 1, 
+            "n_outputs": 1,
+            "n_reservoir": 20,
+            "spectral_radius": 0.8,
+            "sparsity": 0.5,
+            "silent": False,
+            "input_scaling": 0,
+            "feedback_scaling": 1,
+            "leaky_rate": 0,
+            "noise": 0,
+            "wash_out": 100
+        }
+        esn = ESN(**esn_args)
+        y_pred = esn.fit(x,y)
+        mse = ((y - y_pred)**2).mean()
+        plt.plot(y, label="real")
+        plt.plot(y_pred, label="pred")
+        plt.title("ESN on Periodic signal")
+        plt.show()
+        print(f"Loss: {mse:.2f}")
+
+        """
+        In this second part, we will now study what is the relation between the reservoir 
+        size and the performance of the task.
+        Globally we observe that after n_reservoir > period, the problem solving is satisfactory
+        """
+        del esn_args["n_reservoir"]
+        esn_args["silent"] = True
+        reservoir_size: list[int] = [*range(5, 40)]
+        loss_array: np.ndarray = np.zeros(len(reservoir_size))
+        for idx, k in enumerate(reservoir_size):
+            esn = ESN(**esn_args, n_reservoir=k)
+            y_pred = esn.fit(x, y)
+            loss_array[idx] = ((y - y_pred)**2).mean()
         
-        """
-        x_train, y_train = DataLoader.delay_timeseries(n=5, length=10000, pct_signal=0.01)
-        x_test, y_test = DataLoader.delay_timeseries(n=5, length=1000, pct_signal=0.01)
-
-        esn = ESN(n_inputs = 1,
-            n_outputs = 1,
-            n_reservoir = 500,
-            W_in_scaling = 0.2, # 0.8,
-            teacher_forcing = False,
-            is_SLM=False, #intensity=0.5418,
-            leaky_rate = 0,
-            wash_out = 50,
-            noise = 0, # 5e-3,
-            sparsity = 0.7, # Reservoir connectivity in the subject
-            spectral_radius = 0.8,
-            # learn_method='ridge', ridge_noise= 5 * 10 ** (-3),
-            # learn_method="SGD", SGD_clf=clf,
-            learn_method="pinv",
-            random_state = 12,
-            silent = False)
-        
-        pred_train = esn.fit(x_train, y_train)
-        pred_test = esn.predict(x_test, continuation=False)
-        n_points_plot = 200
-        plt.plot(x_train, color="blue", label="input")
-        plt.plot(y_train, color="green", label="real")
-        plt.plot(pred_train, color="red", label="pred")
+        plt.plot(reservoir_size, loss_array, label="Loss")
+        plt.xlabel("Reservoir size")
+        plt.ylabel("Loss on periodic signal task")
+        plt.title("Loss dependence on reservoir size on Periodic signal task")
         plt.show()
-
-        plt.plot(x_test, color="blue", label="input")
-        plt.plot(y_test, color="green", label="real")
-        plt.plot(pred_test, color="red", label="pred")
-        plt.show()
-        
-
-    def test2():
-        """"""
-        x_train, y_train = DataLoader.periodic_signal(length=10000, period=5)
-        x_test, y_test = DataLoader.periodic_signal(length=1000, period=5)
-        esn = ESN(n_inputs = 1,
-            n_outputs = 1,
-            n_reservoir = 50,
-            W_in_scaling = None, # 0.2,
-            teacher_forcing = False,
-            is_SLM=False, #intensity=0.5418,
-            leaky_rate = 0, # 0.2
-            wash_out = 0,
-            noise = 5e-5,
-            sparsity = 0.9, # Reservoir connectivity in the subject
-            spectral_radius = 0.8,
-            learn_method='ridge', ridge_noise= 5 * 10 ** (-3),
-            # learn_method="SGD", SGD_clf=clf,
-            # learn_method="pinv",
-            random_state = 12,
-            silent = False)
-        pred_train = esn.fit(x_train, y_train)
-        pred_test = esn.predict(x_test, continuation=False)
-        plt.plot(pred_train[200:300], color="red", label="pred")
-        plt.plot(y_train[200:300], color="green", label="real")
-        plt.plot(x_train[200:300], color="blue", label="input")
-        plt.show()
-
-        plt.plot(pred_test[200:300], color="red", label="pred")
-        plt.plot(y_test[200:300], color="green", label="real")
-        plt.plot(x_test[200:300], color="blue", label="input")
-        plt.show()
-
-    def test3():
-        """
-        This is simple training test on MNIST
-        """
-        (x_train, y_train), (x_test, y_test) = DataLoader.load_mnist()
-        clf = SGDClassifier(loss='modified_huber', penalty='l2', max_iter=2, epsilon=0.1,
-                   class_weight='balanced', average=True)
-        esn = ESN(n_inputs = 28 * 28,
-            n_outputs = 10,
-            n_reservoir = 500,
-            W_in_scaling = 0.2,
-            teacher_forcing = False,
-            is_SLM=False, #intensity=0.5418,
-            leaky_rate = 0,
-            wash_out = 0,
-            noise = 0, #5e-3,
-            sparsity = 0.7, # Reservoir connectivity in the subject
-            spectral_radius = 0.9,
-            learn_method='ridge', ridge_noise=5*10**(-3),
-            # learn_method="SGD", SGD_clf=clf,
-            random_state = 12,
-            silent = False)
+        return
+    
+    def test_mnist():
+        # Set file paths based on added MNIST Datasets
+        input_path = 'data'
+        training_images_filepath = os.path.join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
+        training_labels_filepath = os.path.join(input_path, 'train-labels-idx1-ubyte/train-labels-idx1-ubyte')
+        test_images_filepath = os.path.join(input_path, 't10k-images-idx3-ubyte/t10k-images-idx3-ubyte')
+        test_labels_filepath = os.path.join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
+        # Load MINST dataset
+        mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
+        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data()
+        esn = ESN(
+            n_inputs=28*28,
+            n_outputs=10,
+            spectral_radius=0.8,
+            n_reservoir=50,
+            sparsity=0.5,
+            silent=False,
+            input_scaling=0.7,
+            feedback_scaling=0.2,
+            wash_out=25,
+        )
         pred_train = esn.fit(x_train, y_train)
         pred_test = esn.predict(x_test, continuation=False)
         train_acc = accuracy(pred_train, y_train)
         test_acc = accuracy(pred_test, y_test)
         print(f"Training accuracy: {100*train_acc:.2f}%")
         print(f"Testing accuracy: {100*test_acc:.2f}%")
-        pass
+        return
+        
 
 
 if __name__ == "__main__":
-    ESNtest.test3()
+    # ESNtest.test_sinus()
+    # ESNtest.test_periodic_signal()
+    ESNtest.test_mnist()
