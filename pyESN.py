@@ -179,9 +179,9 @@ class ESN:
         elif self.learn_method == "pinv_ridge":
             self.W_out = ridge(x, y, self.ridge_noise)
         elif self.learn_method == "sgd":
-            self.W_out = sgd(x, y, alpha=self.learning_rate, lambda_ridge=0)
+            self.W_out = sgd(x, y, alpha=self.learning_rate, lambda_ridge=0, silent=self.silent)
         elif self.learn_method == "sgd_ridge":
-            self.W_out = sgd(x, y, alpha=self.learn_method, lambda_ridge=self.ridge_noise)
+            self.W_out = sgd(x, y, alpha=self.learn_method, lambda_ridge=self.ridge_noise, silent=self.silent)
         
         ## Predicting (we need to the full states without washout)
         pred_train: np.ndarray = self.out_activ(np.dot(self.extended_states, self.W_out.T))

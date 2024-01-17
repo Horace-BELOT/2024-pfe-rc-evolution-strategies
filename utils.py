@@ -87,9 +87,11 @@ def sgd(
         alpha: float, 
         W_init: Optional[np.ndarray] = None,
         lambda_ridge: float = 0,
+        silent: bool = True
         ) -> np.ndarray:
     """
     Computes simple Stochastic Gradient Descent at learning rate alpha
+    Ax - y minmized
     Args:
         X: np.ndarray, inputs with shape (N, n_inputs)
         Y: np.ndarray, targets with shape (N, n_outputs)
@@ -99,18 +101,21 @@ def sgd(
     Returns:
         np.ndarray, fitted weights matrix A such that AX - Y is minimized 
     """
-    n: int = X.shape[0]
+    n_samples: int = X.shape[0]
     n_inputs: int = X.shape[1]
     n_outputs: int = Y.shape[1]
     A: np.ndarray = np.zeros(shape=(n_outputs, n_inputs))
     if W_init is not None:
         A = W_init.copy()
     
-    for i in range(n):
-        gradient: np.ndarray = 2 * (
-            np.dot(X[i, :], np.dot(A, X[i, :]) - Y[i, :]) +
-            lambda_ridge * A
-        )
+    for i in range(n_samples):
+        x = X[i, :].reshape(1,-1)
+        pred = np.dot(x, A.T)
+        loss = pred - Y[i, :]
+        if not silent and i % 100 == 0:
+            cost = np.sum(loss ** 2)
+            print("Iteration %d | Cost: %f" % (i, cost))
+        gradient = np.dot(loss.T, x)
         A -= alpha * gradient
     return A
 
@@ -183,7 +188,7 @@ class MnistDataloader(object):
         x_test, y_test = self.__read_images_labels(self.test_images_filepath, self.test_labels_filepath)
         return (x_train, y_train),(x_test, y_test)
     
-    def prepare_data(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def prepare_data(self, normalize: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Loads data and returns it as lists of (1, 28x28) arrays representing image and an array representing the labels"""
         (x_train, y_train),(x_test, y_test) = self.load_data()
 
@@ -191,6 +196,14 @@ class MnistDataloader(object):
         y_train_numpy: np.ndarray = np.eye(10)[np.array(y_train)]  # labels
         x_test_numpy: np.ndarray = np.array([np.array(k).reshape((1, 28 * 28)) for k in x_test]).reshape(len(x_test), 28*28)
         y_test_numpy: np.ndarray = np.eye(10)[np.array(y_test)]  # labels
+        if normalize:
+            # Normalizing trainset
+            m: np.ndarray = x_train_numpy.mean(axis=0)
+            s: np.ndarray = x_train_numpy.std(axis=0)
+            s[s == 0] = 1  # Preventing the std from being = 0
+            x_train_numpy = (x_train_numpy - m) / s
+            # Normalizing testset with trainset std and mean
+            x_test_numpy = (x_test_numpy - m) / s
         return (x_train_numpy, y_train_numpy), (x_test_numpy, y_test_numpy)
     
     def show_images_sample(self):
@@ -225,7 +238,24 @@ class MnistDataloader(object):
             index += 1
         plt.show()
 
+
+def test_sgd():
+    from sklearn.linear_model import SGDRegressor
+    n = 10000
+    # X = np.random.rand(n, 3)
+    # Y = (2* X[:, 0] - X[:, 1] + 0.1 * X[:, 2]).reshape(n, 1) + 0.04 * np.random.rand(n, 1) - 0.02
+
+    X = np.random.rand(n, 3)
+    Y = (0.5 * X.sum(axis=1) + 0.04 * np.random.rand(n) - 0.02).reshape(n, 1)
+    Y = np.hstack([Y, 0.2 * Y])
+    # clf = SGDRegressor(penalty="l2", alpha=0.0001)
+    # clf.fit(X,Y)
+    # clf.coef_
+    A = sgd(X, Y, alpha=0.001, silent=False) 
+    return
+
 if __name__ == "__main__":
+    test_sgd()
     # Set file paths based on added MNIST Datasets
     input_path = 'data'
     training_images_filepath = join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')

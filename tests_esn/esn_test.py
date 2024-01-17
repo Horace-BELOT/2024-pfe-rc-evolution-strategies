@@ -157,7 +157,7 @@ class ESNtest:
         test_labels_filepath = os.path.join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
         # Load MINST dataset
         mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
-        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data()
+        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(normalize=True)
         esn = ESN(
             n_inputs=28*28,
             n_outputs=10,
@@ -168,6 +168,8 @@ class ESNtest:
             input_scaling=0.7,
             feedback_scaling=0.2,
             wash_out=25,
+            learn_method="sgd",
+            learning_rate=0.00001
         )
         pred_train = esn.fit(x_train, y_train)
         pred_test = esn.predict(x_test, continuation=False)
