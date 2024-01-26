@@ -13,6 +13,7 @@ from pyESN import ESN
 from utils import MnistDataloader, accuracy
 import matplotlib.pyplot as plt
 import numpy as np
+from utils import sgd
 
 
 
@@ -150,18 +151,26 @@ class ESNtest:
         test_labels_filepath = os.path.join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
         # Load MINST dataset
         mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
-        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(normalize=True)
+        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+            normalize=True, 
+            crop_top=2, 
+            crop_bot=2, 
+            crop_left=2, 
+            crop_right=2,
+            out_format="column"
+        )
+        n_samples, input_size = x_train.shape
         esn = ESN(
-            n_inputs=28*28,
+            n_inputs=input_size,
             n_outputs=10,
             spectral_radius=0.8,
-            n_reservoir=50,
+            n_reservoir=500,
             sparsity=0.5,
             silent=False,
             input_scaling=0.7,
             feedback_scaling=0.2,
             wash_out=25,
-            learn_method="sgd",
+            learn_method="pinv",
             learning_rate=0.00001
         )
         pred_train = esn.fit(x_train, y_train)
@@ -171,10 +180,33 @@ class ESNtest:
         print(f"Training accuracy: {100*train_acc:.2f}%")
         print(f"Testing accuracy: {100*test_acc:.2f}%")
         return
-        
+    
+    def linear_reg_mnist():
+        """
+        This is NOT AN ESN test
+        This is just to see how well a simple linear regression performs on MNIST
+        """
+        # Set file paths based on added MNIST Datasets
+        input_path = 'data'
+        training_images_filepath = os.path.join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
+        training_labels_filepath = os.path.join(input_path, 'train-labels-idx1-ubyte/train-labels-idx1-ubyte')
+        test_images_filepath = os.path.join(input_path, 't10k-images-idx3-ubyte/t10k-images-idx3-ubyte')
+        test_labels_filepath = os.path.join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
+        # Load MINST dataset
+        mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
+        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(normalize=True)
+        theta = sgd(x_train, y_train, alpha=5*10**-6, silent=False, lambda_ridge=10**-5)
+        pred_train = np.dot(x_train, theta.T)
+        pred_test = np.dot(x_test, theta.T)
+        train_acc = accuracy(pred_train, y_train)
+        test_acc = accuracy(pred_test, y_test)
+        print(f"Training accuracy: {100*train_acc:.2f}%")
+        print(f"Testing accuracy: {100*test_acc:.2f}%")
+        return
 
 
 if __name__ == "__main__":
+    # ESNtest.linear_reg_mnist()
     # ESNtest.test_sinus()
     # ESNtest.test_periodic_signal()
     ESNtest.test_mnist()

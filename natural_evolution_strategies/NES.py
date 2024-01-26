@@ -1,5 +1,13 @@
 """
 Implementation of the NES (Natural Evolution Strategy)
+
+# TODO: ==> DONE
+To reduce variance, we use antithetic sampling Geweke [1988], 
+also known as mirrored sampling Brockhoff et al. [2010] in the 
+ES literature: that is, we always evaluate pairs of perturbations +eps, −eps,
+
+# TODO:
+softmax pour éviter les exploding gradients
 """
 import numpy as np
 from typing import Optional, Callable, Any
@@ -17,6 +25,7 @@ class NES:
             pop: int = 50, # population size
             sigma: float = 0.1, # noise standard deviation
             alpha: float = 0.001, # learning rate
+            mirrored_sampling: bool = False
         ):
         """
         Args
@@ -30,6 +39,9 @@ class NES:
                 Spread noise of the new generation from the precendent
             alpha: float
                 Learning rate
+            mirrored_sampling: bool
+                Replaces the estimation of f(w + e) by (f(w + e) - f(w - e)) / 2
+                **THIS WILL DOUBLE THE COMPUTATION TIME FOR A GIVEN POPULATION**
 
         """
         self.pop: int = pop
@@ -37,6 +49,7 @@ class NES:
         self.alpha: float = alpha
         self.w: np.ndarray = w.copy()
         self.f = f
+        self.mirrored_sampling: bool = mirrored_sampling
         
     def step(self):
         """
@@ -51,7 +64,13 @@ class NES:
         rewards: np.ndarray = np.zeros(self.pop)
         for i, elem in enumerate(new_gen):
             # We compute the reward for our base point + sigma * delta[i]
-            rewards[i] = self.f(self.w + self.sigma * elem)
+            if self.mirrored_sampling:
+                rewards[i] = 0.5 * (
+                    self.f(self.w + self.sigma * elem) -
+                    self.f(self.w - self.sigma * elem)
+                )
+            else:
+                rewards[i] = self.f(self.w + self.sigma * elem)
         
         # Standardize the rewards to have a gaussian distribution
         rewards = (rewards - np.mean(rewards)) / np.std(rewards)

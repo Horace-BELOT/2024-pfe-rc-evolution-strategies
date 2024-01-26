@@ -62,9 +62,9 @@ def test1():
     nes = NES(
         w=esn.W_in,
         f=f_reward,
-        pop=3,
-        sigma=0.01,
-        alpha=0.001,
+        pop=5,
+        sigma=0.05,
+        alpha=0.05,
     )
     nes.optimize(n_iter=20, silent=False)
 

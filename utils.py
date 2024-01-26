@@ -11,7 +11,7 @@ from array import array
 from os.path import join
 import matplotlib.pyplot as plt
 import random
-from typing import Optional
+from typing import Optional, Literal
 
 
 
@@ -114,9 +114,10 @@ def sgd(
         loss = pred - Y[i, :]
         if not silent and i % 100 == 0:
             cost = np.sum(loss ** 2)
-            print("Iteration %d | Cost: %f" % (i, cost))
+            # print("Iteration %d | Cost: %f" % (i, cost))
         gradient = np.dot(loss.T, x)
-        A -= alpha * gradient
+        ridge_term = A * lambda_ridge
+        A -= alpha * (gradient + ridge_term)
     return A
 
 
@@ -199,14 +200,38 @@ class MnistDataloader(object):
         x_test, y_test = self.__read_images_labels(self.test_images_filepath, self.test_labels_filepath)
         return (x_train, y_train),(x_test, y_test)
     
-    def prepare_data(self, normalize: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def prepare_data(
+            self,
+            normalize: bool = False,
+            crop_top: int = 0,
+            crop_bot: int = 0,
+            crop_left: int = 0,
+            crop_right: int = 0,
+            out_format: Literal["normal", "column", "row"] = "normal",
+
+        ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
         """Loads data and returns it as lists of (1, 28x28) arrays representing image and an array representing the labels"""
         (x_train, y_train),(x_test, y_test) = self.load_data()
 
-        x_train_numpy: np.ndarray = np.array([np.array(k).reshape((1, 28 * 28)) for k in x_train]).reshape(len(x_train), 28*28)
-        y_train_numpy: np.ndarray = np.eye(10)[np.array(y_train)]  # labels
-        x_test_numpy: np.ndarray = np.array([np.array(k).reshape((1, 28 * 28)) for k in x_test]).reshape(len(x_test), 28*28)
-        y_test_numpy: np.ndarray = np.eye(10)[np.array(y_test)]  # labels
+        # x_train_numpy: np.ndarray = np.array([np.array(k).reshape((1, 28 * 28)) for k in x_train]).reshape(len(x_train), 28*28)
+        # y_train_numpy: np.ndarray = np.eye(10)[np.array(y_train)]  # labels
+        # x_test_numpy: np.ndarray = np.array([np.array(k).reshape((1, 28 * 28)) for k in x_test]).reshape(len(x_test), 28*28)
+        # y_test_numpy: np.ndarray = np.eye(10)[np.array(y_test)]  # labels
+
+        x_train_numpy: np.ndarray = np.array([np.array(k) for k in x_train])
+        y_train_numpy: np.ndarray = np.eye(10)[np.array(y_train)]
+        x_test_numpy: np.ndarray = np.array([np.array(k) for k in x_test])
+        y_test_numpy: np.ndarray = np.eye(10)[np.array(y_test)]
+
+        # Changing data format
+        f = lambda x, y: self.__change_array_shape(
+            x, y, crop_top=crop_top, crop_bot=crop_bot, 
+            crop_left=crop_left, crop_right=crop_right,
+            out_format=out_format)
+        x_train_numpy, y_train_numpy = f(x_train_numpy, y_train_numpy)
+        x_test_numpy, y_test_numpy = f(x_test_numpy, y_test_numpy)
+
+        # Normalization of data
         if normalize:
             # Normalizing trainset
             m: np.ndarray = x_train_numpy.mean(axis=0)
@@ -216,6 +241,42 @@ class MnistDataloader(object):
             # Normalizing testset with trainset std and mean
             x_test_numpy = (x_test_numpy - m) / s
         return (x_train_numpy, y_train_numpy), (x_test_numpy, y_test_numpy)
+    
+    def __change_array_shape(
+            self,
+            x: np.ndarray, 
+            y: np.ndarray,
+            crop_top: int = 0,
+            crop_bot: int = 0,
+            crop_left: int = 0,
+            crop_right: int = 0,
+            out_format: Literal["normal", "column", "row"] = "normal",
+        ) -> np.ndarray:
+        """
+        Input:
+            x: np.ndarray of shape (n_sample, 28, 28)
+
+        Returns
+            tuple[np.ndarray, np.ndarray] of x and y arrays. x array is of shape n x p and
+            y array is of shape n x 10
+        """
+        x_out = x[:, crop_top:, :]
+        if crop_bot != 0: x_out = x_out[:, :-crop_bot, :]
+        x_out = x_out[:, :, crop_left:]
+        if crop_right != 0: x_out = x_out[:, :, :-crop_right]
+        assert x.ndim == 3, "x array should have 3 dimension but has {x.ndim}"
+        n, p, q = x_out.shape  # n samples, p rows, q columns
+        y_out = y.copy()
+        if out_format == "column":
+            x_out = np.transpose(x_out, axes=[0, 2, 1]).reshape(n * q, p)
+            y_out = np.repeat(y_out, repeats=q, axis=0)
+        elif out_format == "row":
+            x_out = np.reshape(n * p, q)
+            y_out = np.repeat(y_out, repeats=p, axis=0)
+        else:
+            # Otherwise, 1 row = an entire image with p * q pixels
+            x_out = x_out.reshape(n, p * q)
+        return x_out, y_out
     
     def show_images_sample(self):
         (x_train, y_train), (x_test, y_test) = mnist_dataloader.load_data()
