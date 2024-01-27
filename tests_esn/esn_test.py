@@ -157,7 +157,7 @@ class ESNtest:
             crop_bot=2, 
             crop_left=2, 
             crop_right=2,
-            out_format="column"
+            # out_format="column"
         )
         n_samples, input_size = x_train.shape
         esn = ESN(

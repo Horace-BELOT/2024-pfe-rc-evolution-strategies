@@ -131,7 +131,7 @@ class ESN:
         self.W_fb *= self.feedback_scaling
 
         ## Initialize the output layer
-        self.W_out = np.zeros(shape=(self.n_outputs, self.n_inputs))
+        self.W_out = np.zeros(shape=(self.n_outputs, (self.n_inputs + self.n_reservoir)))
 
     def _update(self, state: np.ndarray, input: np.ndarray, output: np.ndarray) -> np.ndarray:
         """
@@ -151,47 +151,100 @@ class ESN:
         noise_matrix: np.ndarray = np.random.normal(scale=self.noise, size=self.n_reservoir)
         return self.leaky_rate * state + noise_matrix + self.state_activ_fx(preactivation)
         
+    def feed(
+            self, 
+            inputs: np.ndarray, 
+            outputs: Optional[np.ndarray] = None,
+            build_outputs: bool = False,
+            wash_out: Optional[int] = None
+            ) -> np.ndarray:
+        """
+        Feeds inputs and outputs (through feedback loop) into the reservoir.
+
+        Args:
+            inputs: np.ndarray of inputs of shape (N x n_inputs)
+            outputs: Optional[np.ndarray] of outputs of shape (N x n_outputs).
+                If None: initialized as zeros
+            build_outputs: bool. Whether or not the ESN will build the outputs using
+                the states, the activation function and the current W_out matrix.
+                - If True: then the feedback component of step n + 1 will be built 
+                    from current W_out and state n.
+                - If False: then the feedback component will be built from provided
+                    outputs. Otherwise matrices of zeros will be used (no feedback).
+            wash_out: Optional[int] can override the wash_out parameter of ESN
+
+        Returns:
+            np.ndarray of extended states (states + inputs concatenated) of 
+                shape (N x (n_inputs + n_reservoir))
+            np.ndarray of outputs
+        """
+        n_truncate: int = wash_out if wash_out is not None else self.wash_out
+        ### First we need to reshape potentially ill-shaped inputs.
+        if inputs.ndim < 2: inputs = np.reshape(inputs, (len(inputs), -1))
+        if inputs.shape[1] != self.n_inputs: 
+            raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_inputs})")
+        n: int = inputs.shape[0]
+        
+        if outputs is None:  # If no outputs is given
+            outputs = np.zeros(shape=(n, self.n_outputs))
+        else:
+            if outputs.ndim < 2: outputs = np.reshape(outputs, (len(outputs), -1))
+            if outputs.shape[1] != self.n_outputs: 
+                raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_outputs})")
+            # Checking if inputs and outputs have the same size
+            if outputs.shape[0] != inputs.shape[0]:
+                raise ValueError("Inputs and Outputs have different shapes ()")
+        
+        ### Feeding the network and harvesting states
+        if not self.silent: print("[INFO] Harvesting states...")
+        
+        states: np.ndarray = np.zeros(shape=(n, self.n_reservoir))
+        outputs = outputs.copy()  # This is to avoid editing the matrix given in function input
+
+        progress_bar  = tqdm(range(n - 1), disable=self.silent)  # Progress bar
+        for k in progress_bar:
+            states[k + 1, :] = self._update(states[k], inputs[k + 1, :], outputs[k, :])
+
+            if build_outputs:  
+                # If no output array was given, then we build the output array on the fly
+                # This is necessary as the feedback loop needs the output for time-dependant
+                # problems
+                outputs[k + 1, :] = self.out_activ(np.dot(
+                     self.W_out, np.concatenate([states[k + 1, :], inputs[k + 1, :]])))
+
+            # Keeping track of max coeff to be sure that no divergence occurs
+            # max_res: float = np.abs(self.states[k, :]).max()
+            # progress_bar.set_description(f"Step {k}/{n}. Max in reservoir = {max_res:.2f}")
+                
+        self.states = states
+        x: np.ndarray = np.hstack([self.states, inputs])  # inputs of training is states + inputs
+        self.extended_states = x
+        if not build_outputs:
+            # If outputs were not built on the go => we build them at the end
+            for k in range(n - 1):
+                outputs[k + 1, :] = self.out_activ(np.dot(self.W_out, x[k + 1]))
+
+        y: np.ndarray = self.out_activ_inv(outputs[n_truncate:, :])
+        return x[n_truncate:, ], outputs[n_truncate:, ]
+
+
     def fit(self, inputs: np.ndarray, outputs: np.ndarray) -> np.ndarray:
         """
-        Feeds all the inputs to the network and harvests the resulting states
+        Feeds all the inputs to the network and harvests the resulting states.
+        Then trains the model using the chosen method and fitting the output on the target.
+        Finally, returns the prediction post-training of the ESN model on the train set.
 
         Args:
             inputs: np.ndarray of inputs of shape (N x n_inputs)
             outputs: np.ndarray of outputs of shape (N x n_outputs)
         Returns:
-
+            np.ndarray representing the prediction of the model on the trainset (N x n_outputs)
         """
-        ### First we need to reshape potentially ill-shaped inputs.
-        if inputs.ndim < 2: inputs = np.reshape(inputs, (len(inputs), -1))
-        if inputs.shape[1] != self.n_inputs: 
-            raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_inputs})")
-        if outputs.ndim < 2: outputs = np.reshape(outputs, (len(outputs), -1))
-        if outputs.shape[1] != self.n_outputs: 
-            raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_outputs})")
-        # Checking if inputs and outputs have the same size
-        if outputs.shape[0] != inputs.shape[0]:
-            raise ValueError("Inputs and Outputs have different shapes ()")
-        n: int = inputs.shape[0]
-
-        ### Feeding the network and harvesting states
-        if not self.silent: print("[INFO] Harvesting states...")
-        states: np.ndarray = np.zeros(shape=(n, self.n_reservoir))
-        pbar  = tqdm(range(1, n), disable=self.silent)  # Progress bar
-        for k in pbar:
-            states[k, :] = self._update(states[k - 1], inputs[k, :], outputs[k - 1, :])
-            # Keeping track of max coeff to be sure that no divergence occurs
-            # max_res: float = np.abs(self.states[k, :]).max()
-            # pbar.set_description(f"Step {k}/{n}. Max in reservoir = {max_res:.2f}")
-        self.states = states
+        x, _ = self.feed(inputs, outputs, wash_out=self.wash_out)
+        y: np.ndarray = outputs[self.wash_out:, :]
 
         ### Training output matrix (readout layer)
         if not self.silent: print("[INFO] Training Readout Layer...")
-        ## Preparing data
-        x: np.ndarray = np.hstack([self.states, inputs])  # inputs of training is states + inputs
-        self.extended_states = x
-        x = x[self.wash_out:, :]  # removing first steps
-        y: np.ndarray = self.out_activ_inv(outputs[self.wash_out:, :])
-
         ## Training data
         if self.learn_method == "pinv":
             self.W_out = pinv(x, y)
@@ -205,6 +258,7 @@ class ESN:
         ## Predicting (we need to the full states without washout)
         pred_train: np.ndarray = self.out_activ(np.dot(self.extended_states, self.W_out.T))
         return pred_train
+    
     
     def predict(self, inputs: np.ndarray, continuation: bool = False) -> np.ndarray:
         """
@@ -222,7 +276,10 @@ class ESN:
         n: int = np.shape(inputs)[0]
 
         if continuation:
-            pass
+            # TODO: implement
+            last_input: np.ndarray = np.zeros(self.n_inputs)
+            last_state: np.ndarray = np.zeros(self.n_reservoir)
+            last_output: np.ndarray = np.zeros(self.n_outputs)
         else:
             last_input: np.ndarray = np.zeros(self.n_inputs)
             last_state: np.ndarray = np.zeros(self.n_reservoir)
@@ -231,15 +288,13 @@ class ESN:
         states = np.vstack([last_state, np.zeros([n, self.n_reservoir])])
         outputs = np.vstack([last_output, np.zeros([n, self.n_outputs])])
 
-        for k in tqdm(range(n), disable=self.silent):
-            states[k + 1, :] = self._update(states[k, :], inputs[k + 1, :], outputs[k, :])
-            # outputs[k + 1, :] = self.out_activ(np.dot(
-            #     self.W_out, np.concatenate([states[k + 1, :], inputs[k + 1, :]])))
-        self.states = states
-        extended_states = np.hstack([states[1:, :], inputs[1:, :]])
-        return self.out_activ(np.dot(extended_states, self.W_out.T))
+        x, y = self.feed(inputs=inputs, outputs=None, wash_out=1)
+        # for k in tqdm(range(n), disable=self.silent):
+        #     states[k + 1, :] = self._update(states[k, :], inputs[k + 1, :], outputs[k, :])
+        #     # outputs[k + 1, :] = self.out_activ(np.dot(
+        #     #     self.W_out, np.concatenate([states[k + 1, :], inputs[k + 1, :]])))
+        # self.states = states
+        # self.extended_states = np.hstack([states[1:, :], inputs[1:, :]])
+        # return self.out_activ(np.dot(self.extended_states, self.W_out.T))
+        return y
         # return self.out_activ(outputs[1:])
-
-
-    
-
