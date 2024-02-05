@@ -3,6 +3,7 @@ import sys
 import os
 
 from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import mean_squared_error
 try:  # Fixing import problems
     if "pyESN.py" not in os.listdir(sys.path[0]):
         upper_folder: str = "\\".join(sys.path[0].split("\\")[:-1])
@@ -10,14 +11,17 @@ try:  # Fixing import problems
 except:
     pass
 from pyESN import ESN
+from natural_evolution_strategies.NES import NES
 from utils import MnistDataloader, accuracy
 import matplotlib.pyplot as plt
 import numpy as np
 from utils import sgd
 
-
-
-
+input_path = 'data'
+training_images_filepath = os.path.join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
+training_labels_filepath = os.path.join(input_path, 'train-labels-idx1-ubyte/train-labels-idx1-ubyte')
+test_images_filepath = os.path.join(input_path, 't10k-images-idx3-ubyte/t10k-images-idx3-ubyte')
+test_labels_filepath = os.path.join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
 
 class DataCreator:
     def simple_sinus(length: int = 1000, f: float = 0.2):
@@ -92,7 +96,7 @@ class ESNtest:
         return
 
 
-    def test_periodic_signal():
+    def periodic_signal():
         """
         The goal of this test is to measure the ESN capability to learn to predict a flat signal
         with only periodic spikes every N inputs.
@@ -142,7 +146,7 @@ class ESNtest:
         plt.show()
         return
     
-    def test_mnist():
+    def mnist_simple():
         # Set file paths based on added MNIST Datasets
         input_path = 'data'
         training_images_filepath = os.path.join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
@@ -203,10 +207,136 @@ class ESNtest:
         print(f"Training accuracy: {100*train_acc:.2f}%")
         print(f"Testing accuracy: {100*test_acc:.2f}%")
         return
+    
+    def training_output_layer_nes_vs_sgd() -> None:
+        """
+        In this test, we will compare the training of the output layer between 2 methods:
+         1 - training with NES
+         2 - training with SGD
+        """
+        # Load MINST dataset
+        mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
+        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+            normalize=True, 
+            crop_top=2, 
+            crop_bot=2, 
+            crop_left=2, 
+            crop_right=2,
+            # out_format="column"
+        )
+        truncate: int = 5000
+        x_train = x_train[:truncate, :]
+        y_train = y_train[:truncate, :]
+        n: int = x_train.shape[0]  # number of samples as training inputs
+        esn = ESN(
+            n_inputs=24 * 24,  # truncated by 2 on each side
+            n_outputs=10,
+            spectral_radius=0.8,
+            n_reservoir=500,
+            sparsity=0.5,
+            silent=False,
+            input_scaling=0.7,
+            feedback_scaling=0.2,
+            wash_out=25,
+            learn_method="pinv",
+            learning_rate=0.00001
+        )
+        
+        # Feed the inputs weights to the network
+        x: np.ndarray = esn.feed(inputs=x_train, outputs=y_train, wash_out=esn.wash_out)[0].copy()
+        y: np.ndarray = y_train[esn.wash_out:, :].copy()
+        # We will play around with W_out a lot so we save a backup right away
+        W_out_nes: np.ndarray = esn.W_out.copy()
+        W_out_sgd: np.ndarray = esn.W_out.copy()
+
+        # Defining the NES variables
+        # We will feed the testing samples to the network only once and ahead of the NES iterations
+        # This will prevent us from having to refeed the whole test by calling esn.test() every time
+        x_extend_test, _ = esn.feed(inputs=x_test, outputs=None, wash_out=1)
+        y_extend_test = y_test[1:,:]
+        
+        def f_reward(w_out_i: np.ndarray) -> float:
+            """
+            Evaluates the loss on the train set with W_out = w_out_i
+            Inputs: 
+                w_out_i: np.ndarray
+            """
+            # pred_test = esn.predict(x_test)
+            n_train = x.shape[0]
+            # train_pred = np.zeros((n_train, 10))
+            # for k in range(n_train - 1):
+            #     train_pred[k + 1, :] = np.dot(w_out_i, x[k + 1])
+            # Compares the prediction with the training labels y_train
+            # return - mean_squared_error(y, train_pred)
+            return -np.linalg.norm(np.dot(x, w_out_i.T) - y) / (y.shape[0] * y.shape[1])
+        
+        def f_test(w: np.ndarray) -> float:
+            """Evaluates the testing loss with W_out = w"""
+            return -np.linalg.norm(
+                np.dot(x_extend_test, w.T) - y_extend_test) / (y_extend_test.shape[0] * y_extend_test.shape[1])
+
+        nes = NES(
+            w=W_out_nes,
+            f=f_reward,
+            pop=25,
+            sigma=0.0005,
+            alpha=0.003,
+            f_test=f_test,
+        )
+        training_loss = nes.optimize(n_iter=100, silent=False)
+        plt.plot(np.log10(-training_loss), label="Training loss")
+        plt.plot(np.log10(-nes.testing_loss), label="Testing loss")
+        pred_test = esn.predict(x_test)
+        print(f"Current accuracy: {accuracy(pred_test, y_test)}")
+        print(f"Current loss: {np.linalg.norm(pred_test - y_test)}")
+        plt.show()
+        return
+    
+    def comparison():
+        """"""
+        mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
+        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+            normalize=True, 
+            crop_top=2, 
+            crop_bot=2, 
+            crop_left=2, 
+            crop_right=2,
+            out_format="column",
+            # projection=100,
+        )
+        truncate: int = 5000
+        x_train = x_train[:truncate, :]
+        y_train = y_train[:truncate, :]
+        n_inputs: int = x_train.shape[1]
+        n_outputs: int = y_train.shape[1]
+        itor: int = mnist_dataloader.input_to_output_ratio
+        esn = ESN(
+            n_inputs=n_inputs,
+            n_outputs=n_outputs,
+            spectral_radius=0.8,
+            n_reservoir=500,
+            sparsity=0.5,
+            silent=False,
+            input_scaling=0.7,
+            feedback_scaling=0.2,
+            wash_out=25,
+            learn_method="pinv",
+            learning_rate=0.00001,
+            input_to_output_ratio=itor,
+        )
+        pred_train = esn.fit(x_train, y_train)
+        pred_test = esn.predict(x_test, continuation=False)
+        train_acc = accuracy(pred_train, y_train)
+        test_acc = accuracy(pred_test, y_test)
+        print(f"Training accuracy: {100*train_acc:.2f}%")
+        print(f"Testing accuracy: {100*test_acc:.2f}%")
+        return
 
 
 if __name__ == "__main__":
     # ESNtest.linear_reg_mnist()
     # ESNtest.test_sinus()
-    # ESNtest.test_periodic_signal()
-    ESNtest.test_mnist()
+    # ESNtest.periodic_signal()
+    # ESNtest.mnist_simple()
+    # ESNtest.training_output_layer_nes_vs_sgd()
+    ESNtest.comparison()

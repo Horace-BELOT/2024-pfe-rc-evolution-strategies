@@ -25,7 +25,8 @@ class NES:
             pop: int = 50, # population size
             sigma: float = 0.1, # noise standard deviation
             alpha: float = 0.001, # learning rate
-            mirrored_sampling: bool = False
+            mirrored_sampling: bool = False,
+            f_test: Optional[Callable[[np.ndarray], float]] = None, # function to check testing loss
         ):
         """
         Args
@@ -42,14 +43,21 @@ class NES:
             mirrored_sampling: bool
                 Replaces the estimation of f(w + e) by (f(w + e) - f(w - e)) / 2
                 **THIS WILL DOUBLE THE COMPUTATION TIME FOR A GIVEN POPULATION**
+            f_test: Optional[Callable[[np.ndarray], float]] = None
+                Function that will be called at the end of each generation to measure
+                the loss of the current model on the test set. Results saved in testing_loss
 
         """
         self.pop: int = pop
         self.sigma: float = sigma
         self.alpha: float = alpha
         self.w: np.ndarray = w.copy()
-        self.f = f
+        self.f: Callable[[np.ndarray], float] = f
+        self.f_test: Optional[Callable[[np.ndarray], float]] = f_test
         self.mirrored_sampling: bool = mirrored_sampling
+
+        self.training_loss: Optional[np.ndarray] = None
+        self.testing_loss: Optional[np.ndarray] = None
         
     def step(self):
         """
@@ -74,7 +82,9 @@ class NES:
         
         # Standardize the rewards to have a gaussian distribution
         rewards = (rewards - np.mean(rewards)) / np.std(rewards)
-        rewards *= self.alpha / (self.pop * self.sigma)
+        # The division by sigma has been removed below because it seemed that the normalization already
+        # removed the influence of sigma
+        rewards *= self.alpha / (self.pop) # * self.sigma)
         # Move the estimation according to the vector weighted by their rewards
         if len(self.w.shape) == 1:
             # clean way to do the computation if we have a 1D vector in input
@@ -103,38 +113,23 @@ class NES:
                 Number of iterations
             silent: bool
                 Whether to print results or not
+
+        Returns:
+            1D np.ndarray[float] of the training loss at the end of each generation
         """
-        results = np.zeros(n_iter)
+        self.training_loss = np.zeros(n_iter)
         pbar = tqdm(range(n_iter), disable=silent)
+        if self.f_test is not None:
+            self.testing_loss = np.zeros(n_iter)
         for i in pbar:
-            results[i] = self.step()
-            pbar.set_description(f"Current accuracy: {results[i]}")
-        return results
+            self.training_loss[i] = self.step()
+            if self.f_test is not None:
+                self.testing_loss[i] = self.f_test(self.w)
+                pbar.set_description(f"Current loss: {self.training_loss[i]}, " +
+                                     f"Test loss: {self.training_loss[i]}")
+            else:
+                pbar.set_description(f"Current loss: {self.training_loss[i]}")
+        return self.training_loss
     
 
-if __name__ == "__main__":
-    """
-    In this example here, we want to find a "mystery" matrix
-    using NES. We will define a 1D or 2D matrix and we will use
-    as reward function -distance(x, target_matrix).
-    The NES algorithm converges towards the matrix.
-    """
-    # target_array = np.array([[  1,  4,  5, -6]])
-
-    target_array = np.array([[  1,  4,  5,  6],
-                             [  2,  3, -2, -7],
-                             [ -1,  0,  1,  0]])
-    base_array = np.zeros_like(target_array, dtype=float)
-    reward_func = lambda x: -sqrt(((target_array - x)**2).sum())
-    nes = NES(
-        w=base_array,
-        f=reward_func,
-        pop=50,
-        sigma=5 * 10 ** (-1),
-        alpha=5 * 10 ** (-2)
-    )
-    loss_array = nes.optimize(n_iter=500, silent=False)
-    print(nes.w)
-    plt.plot(loss_array, label="loss")
-    plt.show()
     

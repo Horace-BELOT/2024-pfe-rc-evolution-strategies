@@ -30,6 +30,7 @@ class ESN:
                  random_state: int = None, wash_out: int = 1, silent: bool = True,
                  learn_method: Learning_Method = "pinv",
                  ridge_noise: Optional[float] = None, learning_rate: float = 0,
+                 input_to_output_ratio: int = 1,
                  ):
         """
         Args:
@@ -45,6 +46,9 @@ class ESN:
             out_activ: output activation function (often identity or softmax)
             out_activ_inv: inverse of the output activation function
             leaky_rate: leaky rate of Leaky-Integrator ESN (LIESN), used to improve STM
+            input_to_output_ratio: for MNIST, handles the case where you feed col by col
+                instead of the entire image. The integer counts how many entries match 1 output.
+                By default, there is 1 input per output
         
         [Scaling]
             input_scaling: factor that input weights array W_in will be multiplied by
@@ -75,6 +79,7 @@ class ESN:
         self.wash_out: int = wash_out
         self.input_scaling: float = input_scaling
         self.feedback_scaling: float = feedback_scaling
+        self.input_to_output_ratio: int = input_to_output_ratio
 
         # Model
         self.learn_method: Literal["pinv", "ridge"] = learn_method
@@ -97,7 +102,7 @@ class ESN:
         # Network components
         self.W: np.ndarray  # Reservoir connectivity matrix
         self.W_in: np.ndarray  # Input layer matrix
-        self.W_out: np.ndarray  # Output layer matrix (shape = n_outputs x )
+        self.W_out: np.ndarray  # Output layer matrix (shape = n_outputs x n_reservoir)
         self.W_fb: np.ndarray  # Feedback connectivity array
         self.states: np.ndarray  # list of consecutive reservoir states (N x n_reservoir)
         self.extended_states: np.ndarray  # states + inputs (N x (n_reservoir + n_inputs))
@@ -157,7 +162,7 @@ class ESN:
             outputs: Optional[np.ndarray] = None,
             build_outputs: bool = False,
             wash_out: Optional[int] = None
-            ) -> np.ndarray:
+            ) -> tuple[np.ndarray, np.ndarray]:
         """
         Feeds inputs and outputs (through feedback loop) into the reservoir.
 
@@ -193,10 +198,12 @@ class ESN:
                 raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_outputs})")
             # Checking if inputs and outputs have the same size
             if outputs.shape[0] != inputs.shape[0]:
-                raise ValueError("Inputs and Outputs have different shapes ()")
+                raise ValueError(f"Inputs and Outputs have different shapes ({outputs.shape[0]} != {inputs.shape[0]})")
         
         ### Feeding the network and harvesting states
-        if not self.silent: print("[INFO] Harvesting states...")
+        if not self.silent: 
+            print("[INFO] Harvesting states...")
+
         
         states: np.ndarray = np.zeros(shape=(n, self.n_reservoir))
         outputs = outputs.copy()  # This is to avoid editing the matrix given in function input
@@ -210,7 +217,7 @@ class ESN:
                 # This is necessary as the feedback loop needs the output for time-dependant
                 # problems
                 outputs[k + 1, :] = self.out_activ(np.dot(
-                     self.W_out, np.concatenate([states[k + 1, :], inputs[k + 1, :]])))
+                    self.W_out, np.concatenate([states[k + 1, :], inputs[k + 1, :]])))
 
             # Keeping track of max coeff to be sure that no divergence occurs
             # max_res: float = np.abs(self.states[k, :]).max()
@@ -224,8 +231,12 @@ class ESN:
             for k in range(n - 1):
                 outputs[k + 1, :] = self.out_activ(np.dot(self.W_out, x[k + 1]))
 
+            
         y: np.ndarray = self.out_activ_inv(outputs[n_truncate:, :])
-        return x[n_truncate:, ], outputs[n_truncate:, ]
+        if self.input_to_output_ratio != 1:
+            t: int = self.input_to_output_ratio
+            return x[n_truncate + (t - 1)::t, :], outputs[n_truncate + (t - 1)::t, :]
+        return x[n_truncate:, :], outputs[n_truncate:, :]
 
 
     def fit(self, inputs: np.ndarray, outputs: np.ndarray) -> np.ndarray:
@@ -241,7 +252,8 @@ class ESN:
             np.ndarray representing the prediction of the model on the trainset (N x n_outputs)
         """
         x, _ = self.feed(inputs, outputs, wash_out=self.wash_out)
-        y: np.ndarray = outputs[self.wash_out:, :]
+        t: int = self.input_to_output_ratio
+        y: np.ndarray = outputs[self.wash_out + (t - 1)::t, :]
 
         ### Training output matrix (readout layer)
         if not self.silent: print("[INFO] Training Readout Layer...")
@@ -296,5 +308,6 @@ class ESN:
         # self.states = states
         # self.extended_states = np.hstack([states[1:, :], inputs[1:, :]])
         # return self.out_activ(np.dot(self.extended_states, self.W_out.T))
-        return y
+        t: int = self.input_to_output_ratio
+        return y[(t-1)::t]
         # return self.out_activ(outputs[1:])

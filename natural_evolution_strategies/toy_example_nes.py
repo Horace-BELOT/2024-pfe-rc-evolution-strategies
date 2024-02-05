@@ -6,8 +6,7 @@ from typing import Callable
 import numpy as np
 import sys
 import os
-
-from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import mean_squared_error
 try:  # Fixing import problems
     if "pyESN.py" not in os.listdir(sys.path[0]):
         upper_folder: str = "\\".join(sys.path[0].split("\\")[:-1])
@@ -69,9 +68,9 @@ if __name__ == "__main__":
     dim: int = 5
     target = np.random.randn(dim)  # The target vector is chosen randomly.
     f_loss = lambda x, target=target: -np.sum(np.square(x - target)) # func to maximize
-
+    # f_loss = lambda x, target=target: - mean_squared_error(x, target) # func to maximize
     nes = ToyExampleNES(
-        f=f_loss,
+        f=f_loss,   
         dim=dim,
         npop=50, 
         sigma=0.1, 

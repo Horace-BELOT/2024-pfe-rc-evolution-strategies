@@ -171,6 +171,7 @@ class MnistDataloader(object):
         self.training_labels_filepath = training_labels_filepath
         self.test_images_filepath = test_images_filepath
         self.test_labels_filepath = test_labels_filepath
+        input_to_output_ratio: int = 1
     
     def __read_images_labels(self, images_filepath, labels_filepath):        
         labels = []
@@ -208,15 +209,18 @@ class MnistDataloader(object):
             crop_left: int = 0,
             crop_right: int = 0,
             out_format: Literal["normal", "column", "row"] = "normal",
+            projection: Optional[int] = None,
 
         ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
-        """Loads data and returns it as lists of (1, 28x28) arrays representing image and an array representing the labels"""
-        (x_train, y_train),(x_test, y_test) = self.load_data()
+        """
+        Loads MNIST data arrays representing image & the labels
 
-        # x_train_numpy: np.ndarray = np.array([np.array(k).reshape((1, 28 * 28)) for k in x_train]).reshape(len(x_train), 28*28)
-        # y_train_numpy: np.ndarray = np.eye(10)[np.array(y_train)]  # labels
-        # x_test_numpy: np.ndarray = np.array([np.array(k).reshape((1, 28 * 28)) for k in x_test]).reshape(len(x_test), 28*28)
-        # y_test_numpy: np.ndarray = np.eye(10)[np.array(y_test)]  # labels
+        Inputs:
+            normalize: bool
+                normalize inputs
+            projection: Optional[int]
+        """
+        (x_train, y_train),(x_test, y_test) = self.load_data()
 
         x_train_numpy: np.ndarray = np.array([np.array(k) for k in x_train])
         y_train_numpy: np.ndarray = np.eye(10)[np.array(y_train)]
@@ -230,6 +234,12 @@ class MnistDataloader(object):
             out_format=out_format)
         x_train_numpy, y_train_numpy = f(x_train_numpy, y_train_numpy)
         x_test_numpy, y_test_numpy = f(x_test_numpy, y_test_numpy)
+        if projection is not None:
+            # We create a random projection to the given dimension
+            n: int = x_train_numpy.shape[1]
+            W_proj: np.ndarray = np.random.random(size=(n, projection)) * 2 - 1
+            x_test_numpy = np.dot(x_test_numpy, W_proj)
+            x_train_numpy = np.dot(x_train_numpy, W_proj)
 
         # Normalization of data
         if normalize:
@@ -270,12 +280,15 @@ class MnistDataloader(object):
         if out_format == "column":
             x_out = np.transpose(x_out, axes=[0, 2, 1]).reshape(n * q, p)
             y_out = np.repeat(y_out, repeats=q, axis=0)
+            self.input_to_output_ratio = q
         elif out_format == "row":
             x_out = np.reshape(n * p, q)
             y_out = np.repeat(y_out, repeats=p, axis=0)
+            self.input_to_output_ratio = p
         else:
             # Otherwise, 1 row = an entire image with p * q pixels
             x_out = x_out.reshape(n, p * q)
+            self.input_to_output_ratio = 1
         return x_out, y_out
     
     def show_images_sample(self):
