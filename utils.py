@@ -174,7 +174,7 @@ class MnistDataloader(object):
         input_to_output_ratio: int = 1
     
     def __read_images_labels(self, images_filepath, labels_filepath):        
-        labels = []
+        labels =     []
         with open(labels_filepath, 'rb') as file:
             magic, size = struct.unpack(">II", file.read(8))
             if magic != 2049:
