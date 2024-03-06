@@ -118,7 +118,7 @@ def nes_test_regression(
         alpha=5 * 10 ** (-1),
         mirrored_sampling=True
     )
-    training_loss: np.ndarray[float] = nes.optimize(n_iter=300, silent=False)
+    training_loss: np.ndarray = nes.optimize(n_iter=300, silent=False)
     plt.plot(np.log10(-training_loss))
     plt.show()
     return

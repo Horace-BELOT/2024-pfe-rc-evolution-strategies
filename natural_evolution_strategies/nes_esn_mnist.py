@@ -17,6 +17,11 @@ from natural_evolution_strategies.NES import NES
 import numpy as np
 from sklearn.metrics import mean_squared_error
 
+INPUT_PATH = 'data'
+TRAINING_IMAGES_FILEPATH = os.path.join(INPUT_PATH, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
+TRAINING_LABELS_FILEPATH = os.path.join(INPUT_PATH, 'train-labels-idx1-ubyte/train-labels-idx1-ubyte')
+TEST_IMAGES_FILEPATH = os.path.join(INPUT_PATH, 't10k-images-idx3-ubyte/t10k-images-idx3-ubyte')
+TEST_LABELS_FILEPATH = os.path.join(INPUT_PATH, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
 
 def load_mnist():
     """Loads the MNIST dataset"""
@@ -31,6 +36,40 @@ def load_mnist():
 
 
 def test1():
+    """
+    This test program will fit a simple ESN on MNIST but instead of using SGD / PINV to 
+    fit the output layer, we will use a Natural Evolution Strategy
+    """
+    mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
+    (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+        normalize=True, 
+        # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
+        # out_format="column",
+        hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+        projection=200,
+        silent=False,
+    )
+
+    esn = ESN(
+        n_inputs=28*28,
+        n_outputs=10,
+        spectral_radius=0.8,
+        n_reservoir=20,
+        sparsity=0.5,
+        silent=False,
+        input_scaling=0.7,
+        feedback_scaling=0.2,
+        wash_out=25,
+        learn_method="custom",
+        custom_method=f_train,
+        learning_rate=0.00001
+    )
+
+
+def test2():
+    """
+    This is an attempt to fit the input layer of the ESN with NES
+    """
     (x_train, y_train), (x_test, y_test) = load_mnist()
     esn = ESN(
         n_inputs=28*28,
@@ -70,5 +109,5 @@ def test1():
 
 
 if __name__ == "__main__":
-    test1()
+    test2()
 

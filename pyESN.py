@@ -10,13 +10,13 @@ x[n + 1] = activation(W * x[n] + W_in * u(n + 1) + W_fb * y[n])
 """
 
 import numpy as np
-from tqdm import tqdm
+import tqdm
 from sklearn.base import BaseEstimator
 from utils import * 
 from RLS import RLS
 from typing import Callable, Literal, Optional, Union, List, Tuple
 
-Learning_Method = Literal["pinv", "pinv_ridge", "sgd", "sgd_ridge"]
+Learning_Method = Literal["pinv", "pinv_ridge", "sgd", "sgd_ridge", "custom"]
 
 class ESN:
 
@@ -28,7 +28,8 @@ class ESN:
                  out_activ_inv: Callable[[np.ndarray], np.ndarray] = identity,
                  input_scaling: float = 1, feedback_scaling: float = 0.0,
                  random_state: int = None, wash_out: int = 1, silent: bool = True,
-                 learn_method: Learning_Method = "pinv",
+                 learn_method: Learning_Method = "pinv", 
+                 custom_method: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
                  ridge_noise: Optional[float] = None, learning_rate: float = 0,
                  input_to_output_ratio: int = 1,
                  ):
@@ -56,7 +57,8 @@ class ESN:
 
 
         [Training]
-            learn_method: "pinv", "pinv_ridge", "sgd", "sgd_ridge"
+            learn_method: "pinv", "pinv_ridge", "sgd", "sgd_ridge", "custom"
+            custom_method: if method is custom, this shouuld be a method such that custom_method(x,y) = w
             learning_rate: learning rate used for SGD
             ridge_noise: ridge regression noise (regularization)
 
@@ -82,7 +84,10 @@ class ESN:
         self.input_to_output_ratio: int = input_to_output_ratio
 
         # Model
-        self.learn_method: Literal["pinv", "ridge"] = learn_method
+        self.learn_method: Learning_Method = learn_method
+        self.custom_method: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = custom_method
+        if self.learn_method == "custom" and self.custom_method is None:
+            raise ValueError("Can't have learn_method = custom without providing a custom_method")
         self.ridge_noise: Optional[float] = ridge_noise
         self.learning_rate: float = learning_rate
 
@@ -208,7 +213,7 @@ class ESN:
         states: np.ndarray = np.zeros(shape=(n, self.n_reservoir))
         outputs = outputs.copy()  # This is to avoid editing the matrix given in function input
 
-        progress_bar  = tqdm(range(n - 1), disable=self.silent)  # Progress bar
+        progress_bar = tqdm.tqdm(range(n - 1), disable=self.silent)  # Progress bar
         for k in progress_bar:
             states[k + 1, :] = self._update(states[k], inputs[k + 1, :], outputs[k, :])
 
@@ -266,6 +271,7 @@ class ESN:
             self.W_out = sgd(x, y, alpha=self.learning_rate, lambda_ridge=0, silent=self.silent)
         elif self.learn_method == "sgd_ridge":
             self.W_out = sgd(x, y, alpha=self.learn_method, lambda_ridge=self.ridge_noise, silent=self.silent)
+        elif self.learn_method == "custom":
         
         ## Predicting (we need to the full states without washout)
         pred_train: np.ndarray = self.out_activ(np.dot(self.extended_states, self.W_out.T))

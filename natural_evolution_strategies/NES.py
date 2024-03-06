@@ -115,7 +115,7 @@ class NES:
                 Whether to print results or not
 
         Returns:
-            1D np.ndarray[float] of the training loss at the end of each generation
+            1D np.ndarray of the training loss at the end of each generation
         """
         self.training_loss = np.zeros(n_iter)
         pbar = tqdm(range(n_iter), disable=silent)

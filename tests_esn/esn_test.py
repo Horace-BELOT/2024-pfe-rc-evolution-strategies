@@ -2,21 +2,22 @@
 import sys
 import os
 
-from sklearn.linear_model import SGDClassifier
-from sklearn.metrics import mean_squared_error
 try:  # Fixing import problems
     if "pyESN.py" not in os.listdir(sys.path[0]):
         upper_folder: str = "\\".join(sys.path[0].split("\\")[:-1])
         sys.path.append(upper_folder)
 except:
     pass
-from pyESN import ESN
-from natural_evolution_strategies.NES import NES
-from utils import MnistDataloader, accuracy
+
+from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Tuple, List, Dict
-from utils import sgd
+
+from natural_evolution_strategies.NES import NES
+from pyESN import ESN
+from utils import sgd, MnistDataloader, accuracy, pinv
 
 input_path = 'data'
 training_images_filepath = os.path.join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
@@ -158,11 +159,11 @@ class ESNtest:
         mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
         (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
             normalize=True, 
-            crop_top=2, 
-            crop_bot=2, 
-            crop_left=2, 
-            crop_right=2,
-            # out_format="column"
+            # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
+            # out_format="column",
+            hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+            projection=200,
+            silent=False,
         )
         n_samples, input_size = x_train.shape
         esn = ESN(
@@ -205,8 +206,14 @@ class ESNtest:
         test_labels_filepath = os.path.join(input_path, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
         # Load MINST dataset
         mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
-        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(normalize=True)
-        theta = sgd(x_train, y_train, alpha=5*10**-6, silent=False, lambda_ridge=10**-5)
+        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+            normalize=True,
+            hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+            # projection=100,
+            silent=False,
+        )
+        # theta = sgd(x_train, y_train, alpha=5*10**-6, silent=False, lambda_ridge=10**-5)
+        theta = pinv(x_train, y_train)
         pred_train = np.dot(x_train, theta.T)
         pred_test = np.dot(x_test, theta.T)
         train_acc = accuracy(pred_train, y_train)
@@ -342,9 +349,9 @@ class ESNtest:
 
 
 if __name__ == "__main__":
-    ESNtest.linear_reg_mnist()
+    # ESNtest.linear_reg_mnist()
     # ESNtest.test_sinus()
     # ESNtest.periodic_signal()
-    # ESNtest.mnist_simple()
+    ESNtest.mnist_simple()
     # ESNtest.training_output_layer_nes_vs_sgd()
     # ESNtest.comparison()

@@ -11,7 +11,9 @@ from array import array
 from os.path import join
 import matplotlib.pyplot as plt
 import random
-from typing import Optional, Literal, List, Tuple
+import tqdm
+from typing import Optional, Literal, List, Tuple, Dict, Any
+from skimage.feature import hog
 
 
 
@@ -156,6 +158,22 @@ def accuracy(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     return acc
 
 
+def calc_hog_features(X, image_shape=(28, 28), 
+                      cell=(8, 8),
+                      block=(2,2),
+                      keep_inputs: Optional[bool] = False):
+    """
+    Converts input data into Histogram of Oriented Gradients
+    """
+    fd_list = []
+    for row in tqdm.tqdm(X, "Computing HOG"):
+        img = row.reshape(image_shape)
+        fd = hog(img, orientations=8, pixels_per_cell=cell, cells_per_block=block)
+        fd_list.append(fd)
+    if keep_inputs:
+        return np.hstack([X, np.array(fd_list)])
+    return np.array(fd_list)
+
 class MnistDataloader(object):
     """
     Source:
@@ -167,6 +185,9 @@ class MnistDataloader(object):
             training_labels_filepath: str,
             test_images_filepath: str, 
             test_labels_filepath: str):
+        """
+        Initializes the object with the path of the data 
+        """
         self.training_images_filepath = training_images_filepath
         self.training_labels_filepath = training_labels_filepath
         self.test_images_filepath = test_images_filepath
@@ -210,15 +231,27 @@ class MnistDataloader(object):
             crop_right: int = 0,
             out_format: Literal["normal", "column", "row"] = "normal",
             projection: Optional[int] = None,
-
+            hog: Optional[Dict[Literal["image_shape", "cell", "block", ], Any]] = None,
+            silent: bool = True
         ) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
         """
         Loads MNIST data arrays representing image & the labels
+        The transformation can be (in order):
+            - Cropping
+            - HOG
+            - Projecting
+            - Normalizing
 
         Inputs:
             normalize: bool
                 normalize inputs
             projection: Optional[int]
+                projects randomly the data on a lower dimension space.
+            hog: Optional[Dict[Literal["image_shape", "cell", "block"], Any]]
+                if not None, transforms data to HOG
+                example of input can be: {"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True}
+                keep_inputs arguments keeps both the input and the HOG for each input
+
         """
         (x_train, y_train),(x_test, y_test) = self.load_data()
 
@@ -234,6 +267,13 @@ class MnistDataloader(object):
             out_format=out_format)
         x_train_numpy, y_train_numpy = f(x_train_numpy, y_train_numpy)
         x_test_numpy, y_test_numpy = f(x_test_numpy, y_test_numpy)
+
+        # HOG
+        if hog is not None:
+            x_test_numpy = calc_hog_features(x_test_numpy, **hog)
+            x_train_numpy = calc_hog_features(x_train_numpy, **hog)
+
+        # Random projection
         if projection is not None:
             # We create a random projection to the given dimension
             n: int = x_train_numpy.shape[1]
@@ -250,6 +290,8 @@ class MnistDataloader(object):
             x_train_numpy = (x_train_numpy - m) / s
             # Normalizing testset with trainset std and mean
             x_test_numpy = (x_test_numpy - m) / s
+        if not silent:
+            print(f"Shape of MNIST input data: {x_train_numpy.shape}")
         return (x_train_numpy, y_train_numpy), (x_test_numpy, y_test_numpy)
     
     def __change_array_shape(
