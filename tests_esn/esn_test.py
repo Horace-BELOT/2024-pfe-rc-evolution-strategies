@@ -161,20 +161,21 @@ class ESNtest:
             normalize=True, 
             # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
             # out_format="column",
-            hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
-            projection=200,
+            # hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+            projection=100,
             silent=False,
         )
         n_samples, input_size = x_train.shape
         esn = ESN(
             n_inputs=input_size,
             n_outputs=10,
-            spectral_radius=0.8,
+            spectral_radius=0.9,
             n_reservoir=500,
-            sparsity=0.5,
+            sparsity=0.7,
             silent=False,
             input_scaling=0.7,
             feedback_scaling=0.2,
+            leaky_rate=0.7,
             wash_out=25,
             learn_method="pinv",
             learning_rate=0.00001
@@ -183,6 +184,7 @@ class ESNtest:
         pred_test = esn.predict(x_test, continuation=False)
         train_acc = accuracy(pred_train, y_train)
         test_acc = accuracy(pred_test, y_test)
+        
         print(f"Training accuracy: {100*train_acc:.2f}%")
         print(f"Testing accuracy: {100*test_acc:.2f}%")
         return
@@ -243,6 +245,22 @@ class ESNtest:
         x_train = x_train[:truncate, :]
         y_train = y_train[:truncate, :]
         n: int = x_train.shape[0]  # number of samples as training inputs
+
+        # We start by defining the custom method using the NES
+
+        
+        nes = NES(
+            w=W_out_nes,
+            f=f_reward,
+            pop=25,
+            sigma=0.0005,
+            alpha=0.003,
+            f_test=f_test,
+        )
+
+
+
+
         esn = ESN(
             n_inputs=24 * 24,  # truncated by 2 on each side
             n_outputs=10,
@@ -290,14 +308,7 @@ class ESNtest:
             return -np.linalg.norm(
                 np.dot(x_extend_test, w.T) - y_extend_test) / (y_extend_test.shape[0] * y_extend_test.shape[1])
 
-        nes = NES(
-            w=W_out_nes,
-            f=f_reward,
-            pop=25,
-            sigma=0.0005,
-            alpha=0.003,
-            f_test=f_test,
-        )
+
         training_loss = nes.optimize(n_iter=100, silent=False)
         plt.plot(np.log10(-training_loss), label="Training loss")
         plt.plot(np.log10(-nes.testing_loss), label="Testing loss")

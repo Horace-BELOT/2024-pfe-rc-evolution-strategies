@@ -3,8 +3,10 @@ ESN x NES implementation example.
 """
 import sys
 import os
-
+import numpy as np
+from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import SGDClassifier
+
 try:  # Fixing import problems
     if "pyESN.py" not in os.listdir(sys.path[0]):
         upper_folder: str = "\\".join(sys.path[0].split("\\")[:-1])
@@ -12,10 +14,8 @@ try:  # Fixing import problems
 except:
     pass
 from pyESN import ESN
-from utils import split_set, MnistDataloader, accuracy
+from utils import split_set, MnistDataloader, accuracy, pinv
 from natural_evolution_strategies.NES import NES
-import numpy as np
-from sklearn.metrics import mean_squared_error
 
 INPUT_PATH = 'data'
 TRAINING_IMAGES_FILEPATH = os.path.join(INPUT_PATH, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
@@ -40,18 +40,42 @@ def test1():
     This test program will fit a simple ESN on MNIST but instead of using SGD / PINV to 
     fit the output layer, we will use a Natural Evolution Strategy
     """
-    mnist_dataloader = MnistDataloader(training_images_filepath, training_labels_filepath, test_images_filepath, test_labels_filepath)
+    mnist_dataloader = MnistDataloader(
+        TRAINING_IMAGES_FILEPATH, TRAINING_LABELS_FILEPATH, 
+        TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
     (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
         normalize=True, 
         # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
         # out_format="column",
-        hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+        # hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
         projection=200,
         silent=False,
     )
 
+    def custom_method(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """"""
+        # We start from an array fitted on 100 samples
+        w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
+        def f_reward(w_temp: np.ndarray) -> float:
+            return -np.linalg.norm(np.dot(x, w_temp.T) - y) / (y.shape[0] * y.shape[1])
+
+        nes = NES(
+            w=w,
+            f=f_reward,
+            pop=25,
+            sigma=0.000005,
+            alpha=0.001,
+        )
+        nes.optimize(n_iter=100)
+        nes.alpha = 0.00066
+        nes.optimize(n_iter=100)
+        nes.alpha = 0.00033
+        nes.optimize(n_iter=100)
+        return w
+    
+    n_samples, input_size = x_train.shape
     esn = ESN(
-        n_inputs=28*28,
+        n_inputs=input_size,
         n_outputs=10,
         spectral_radius=0.8,
         n_reservoir=20,
@@ -61,9 +85,15 @@ def test1():
         feedback_scaling=0.2,
         wash_out=25,
         learn_method="custom",
-        custom_method=f_train,
-        learning_rate=0.00001
+        custom_method=custom_method,
     )
+    pred_train = esn.fit(x_train, y_train)
+    pred_test = esn.predict(x_test, continuation=False)
+    train_acc = accuracy(pred_train, y_train)
+    test_acc = accuracy(pred_test, y_test)
+    print(f"Training accuracy: {100*train_acc:.2f}%")
+    print(f"Testing accuracy: {100*test_acc:.2f}%")
+    return
 
 
 def test2():
@@ -98,16 +128,9 @@ def test2():
     esn.fit(x_train[:5000], y_train[:5000])
     esn.silent = True
 
-    nes = NES(
-        w=esn.W_in,
-        f=f_reward,
-        pop=5,
-        sigma=0.05,
-        alpha=0.05,
-    )
     nes.optimize(n_iter=20, silent=False)
 
 
 if __name__ == "__main__":
-    test2()
+    test1()
 

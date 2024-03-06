@@ -12,6 +12,7 @@ x[n + 1] = activation(W * x[n] + W_in * u(n + 1) + W_fb * y[n])
 import numpy as np
 import tqdm
 from sklearn.base import BaseEstimator
+
 from utils import * 
 from RLS import RLS
 from typing import Callable, Literal, Optional, Union, List, Tuple
@@ -272,7 +273,7 @@ class ESN:
         elif self.learn_method == "sgd_ridge":
             self.W_out = sgd(x, y, alpha=self.learn_method, lambda_ridge=self.ridge_noise, silent=self.silent)
         elif self.learn_method == "custom":
-        
+            self.W_out = self.custom_method(x,y)
         ## Predicting (we need to the full states without washout)
         pred_train: np.ndarray = self.out_activ(np.dot(self.extended_states, self.W_out.T))
         return pred_train
