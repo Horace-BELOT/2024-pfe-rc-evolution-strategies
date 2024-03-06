@@ -39,9 +39,9 @@ def nes_test_simple():
         alpha=5 * 10 ** (-1)
     )
     n_iter: int = 250
-    res: list[np.ndarray] = []
-    alpha_array: list[float] = []
-    sigma_array: list[float] = []
+    res: List[np.ndarray] = []
+    alpha_array: List[float] = []
+    sigma_array: List[float] = []
     for i in range(15):
         loss_array = nes.optimize(n_iter=n_iter, silent=False)
         alpha_array += [nes.alpha for _ in range(n_iter)]

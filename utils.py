@@ -11,7 +11,7 @@ from array import array
 from os.path import join
 import matplotlib.pyplot as plt
 import random
-from typing import Optional, Literal
+from typing import Optional, Literal, List, Tuple
 
 
 
@@ -121,7 +121,7 @@ def sgd(
     return A
 
 
-def split_set(x: np.ndarray, n: int) -> list[np.ndarray]:
+def split_set(x: np.ndarray, n: int) -> List[np.ndarray]:
     """
     Splits an array in n parts that are almost all equals. 
     (Only the last split will include the remainder and might be larger).
@@ -134,11 +134,11 @@ def split_set(x: np.ndarray, n: int) -> list[np.ndarray]:
             Number of splits
     
     Returns
-        list[np.ndarray]
+        List[np.ndarray]
             List of arrays resulting from the split
     """
     rows_per_splits: int = x.shape[0] // n
-    out: list[np.ndarray] = []
+    out: List[np.ndarray] = []
     for k in range(n - 1):
         out.append(x[k * rows_per_splits:(k + 1) * rows_per_splits, :])
     out.append(x[(n - 1) * rows_per_splits:, :])
@@ -196,7 +196,7 @@ class MnistDataloader(object):
         
         return images, labels
             
-    def load_data(self) -> tuple[list[list[np.ndarray]], array, list[list[np.ndarray]], array]:
+    def load_data(self) -> Tuple[List[List[np.ndarray]], array, List[List[np.ndarray]], array]:
         x_train, y_train = self.__read_images_labels(self.training_images_filepath, self.training_labels_filepath)
         x_test, y_test = self.__read_images_labels(self.test_images_filepath, self.test_labels_filepath)
         return (x_train, y_train),(x_test, y_test)
@@ -211,7 +211,7 @@ class MnistDataloader(object):
             out_format: Literal["normal", "column", "row"] = "normal",
             projection: Optional[int] = None,
 
-        ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
+        ) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
         """
         Loads MNIST data arrays representing image & the labels
 
@@ -267,7 +267,7 @@ class MnistDataloader(object):
             x: np.ndarray of shape (n_sample, 28, 28)
 
         Returns
-            tuple[np.ndarray, np.ndarray] of x and y arrays. x array is of shape n x p and
+            Tuple[np.ndarray, np.ndarray] of x and y arrays. x array is of shape n x p and
             y array is of shape n x 10
         """
         x_out = x[:, crop_top:, :]

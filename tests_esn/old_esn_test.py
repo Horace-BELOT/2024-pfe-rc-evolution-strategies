@@ -56,7 +56,7 @@ class DataLoader:
         (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data()
         return (x_train, y_train), (x_test, y_test)
     
-    def periodic_signal(length: int = 1000, period: int = 5) -> tuple[np.ndarray, np.ndarray]:
+    def periodic_signal(length: int = 1000, period: int = 5) -> Tuple[np.ndarray, np.ndarray]:
         """
         
         """
@@ -65,7 +65,7 @@ class DataLoader:
         y[[k for k in range(length) if k % period == 0]] = 1
         return x, y
 
-    def delay_timeseries(n: int = 5, length: int = 10000, pct_signal: float = 0.02) -> tuple[np.ndarray, np.ndarray]:
+    def delay_timeseries(n: int = 5, length: int = 10000, pct_signal: float = 0.02) -> Tuple[np.ndarray, np.ndarray]:
         """
         Creates a timeseries where if x[i] = 1, y[i + n] = 1 otherwise x and y = 0
         Inputs:

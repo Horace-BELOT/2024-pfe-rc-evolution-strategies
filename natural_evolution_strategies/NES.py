@@ -10,7 +10,7 @@ ES literature: that is, we always evaluate pairs of perturbations +eps, −eps,
 softmax pour éviter les exploding gradients
 """
 import numpy as np
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, List, Tuple
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from math import sqrt
@@ -67,7 +67,7 @@ class NES:
             float
                 reward function applied to the matrix AFTER the step was carried
         """
-        new_gen: list[np.ndarray] = [np.random.normal(0, 1, self.w.shape) for _ in range(self.pop)]
+        new_gen: List[np.ndarray] = [np.random.normal(0, 1, self.w.shape) for _ in range(self.pop)]
 
         rewards: np.ndarray = np.zeros(self.pop)
         for i, elem in enumerate(new_gen):
@@ -104,7 +104,7 @@ class NES:
         return self.f(self.w)
             
 
-    def optimize(self, n_iter: int = 100, silent: bool = False) -> np.ndarray[float]:
+    def optimize(self, n_iter: int = 100, silent: bool = False) -> np.ndarray:
         """
         Runs n_iter steps of the NES algorithm
 

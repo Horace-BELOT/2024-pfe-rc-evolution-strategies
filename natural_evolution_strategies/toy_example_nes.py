@@ -2,7 +2,7 @@
 The goal of this code is to make an oversimplified example of a NES to have a view on 
 how the system functions and how to implement it.
 """
-from typing import Callable
+from typing import Callable, List, Tuple
 import numpy as np
 import sys
 import os

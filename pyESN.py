@@ -14,7 +14,7 @@ from tqdm import tqdm
 from sklearn.base import BaseEstimator
 from utils import * 
 from RLS import RLS
-from typing import Callable, Literal, Optional, Union
+from typing import Callable, Literal, Optional, Union, List, Tuple
 
 Learning_Method = Literal["pinv", "pinv_ridge", "sgd", "sgd_ridge"]
 
@@ -162,7 +162,7 @@ class ESN:
             outputs: Optional[np.ndarray] = None,
             build_outputs: bool = False,
             wash_out: Optional[int] = None
-            ) -> tuple[np.ndarray, np.ndarray]:
+            ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Feeds inputs and outputs (through feedback loop) into the reservoir.
 

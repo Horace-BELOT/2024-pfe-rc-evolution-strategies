@@ -15,6 +15,7 @@ from natural_evolution_strategies.NES import NES
 from utils import MnistDataloader, accuracy
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Tuple, List, Dict
 from utils import sgd
 
 input_path = 'data'
@@ -36,7 +37,7 @@ class DataCreator:
         y: np.ndarray = 0.5 * np.sin(f * np.linspace(1, length, length))
         return x, y
 
-    def periodic_signal(length: int = 1000, period: int = 5) -> tuple[np.ndarray, np.ndarray]:
+    def periodic_signal(length: int = 1000, period: int = 5) -> Tuple[np.ndarray, np.ndarray]:
         """
         Creates an empty input signal, and an output signal of evenly spaced spikes.
         """
@@ -132,7 +133,7 @@ class ESNtest:
         """
         del esn_args["n_reservoir"]
         esn_args["silent"] = True
-        reservoir_size: list[int] = [*range(5, 40)]
+        reservoir_size: List[int] = [*range(5, 40)]
         loss_array: np.ndarray = np.zeros(len(reservoir_size))
         for idx, k in enumerate(reservoir_size):
             esn = ESN(**esn_args, n_reservoir=k)
@@ -189,6 +190,12 @@ class ESNtest:
         """
         This is NOT AN ESN test
         This is just to see how well a simple linear regression performs on MNIST
+        The result are: 
+        "
+            Result of a simple linear regression on MNIST data
+            Training accuracy: 84.58%
+            Testing accuracy: 85.31%
+        "
         """
         # Set file paths based on added MNIST Datasets
         input_path = 'data'
@@ -204,8 +211,9 @@ class ESNtest:
         pred_test = np.dot(x_test, theta.T)
         train_acc = accuracy(pred_train, y_train)
         test_acc = accuracy(pred_test, y_test)
-        print(f"Training accuracy: {100*train_acc:.2f}%")
-        print(f"Testing accuracy: {100*test_acc:.2f}%")
+        print("Result of a simple linear regression on MNIST data")
+        print(f"Training accuracy: {100 * train_acc:.2f}%")
+        print(f"Testing accuracy: {100 * test_acc:.2f}%")
         return
     
     def training_output_layer_nes_vs_sgd() -> None:
@@ -334,9 +342,9 @@ class ESNtest:
 
 
 if __name__ == "__main__":
-    # ESNtest.linear_reg_mnist()
+    ESNtest.linear_reg_mnist()
     # ESNtest.test_sinus()
     # ESNtest.periodic_signal()
     # ESNtest.mnist_simple()
     # ESNtest.training_output_layer_nes_vs_sgd()
-    ESNtest.comparison()
+    # ESNtest.comparison()
