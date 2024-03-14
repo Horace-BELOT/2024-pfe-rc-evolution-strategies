@@ -5,4 +5,4 @@ normal with sgd:
 projection: 576 => 200 with pinv:
 88.93% // 88.54%
 projection: 576 => 100 with pinv:
-87.84% // 87.96%
+87.84% // 87.96%    

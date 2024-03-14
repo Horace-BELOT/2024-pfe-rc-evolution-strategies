@@ -3,7 +3,6 @@ This file contains the code that will show how the accuracy of the ESN evolves
 with the dimension of the input state with regards to random projection to a 
 lower dimensional space.
 """
-import multiprocessing
 import os
 import time
 import sys
@@ -36,6 +35,7 @@ def plot_data(df: pd.DataFrame, save_path: Optional[str] = None) -> None:
         "marker": "o",
         "markersize": 5
     }
+    df.sort_values(by=["tag", "dim"], inplace=True)
     for tag in list(df.loc[:, "tag"].unique()):
         # creating mask
         m = df["tag"] == tag
@@ -43,6 +43,8 @@ def plot_data(df: pd.DataFrame, save_path: Optional[str] = None) -> None:
                 label=tag, **marker_kwargs)
     plt.ylabel("Accuracy")
     plt.xlabel("Dimension")
+    plt.legend(loc="lower right")
+    plt.grid(True)
     if save_path is not None: plt.savefig(save_path)
     plt.show()
 
@@ -57,11 +59,12 @@ def main(
                                         TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
     
     proj_dimensions: List[int] = [
-        *range(5, 50, 5),
+        *range(20, 50, 5),
         *range(50, 100, 10),
-        *range(100, 200, 25),
-        *range(200, 300, 50),
-        *range(300, 501, 100),
+        *range(100, 151, 25),
+        #*range(200, 300, 50),
+        #*range(300, 501, 100),
+        #600, 700, 784, 912
     ]
     print(proj_dimensions)
     result_records: List[Dict[str, Any]] = []
@@ -70,7 +73,7 @@ def main(
             normalize=True, 
             # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
             # out_format="column",
-            hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+            hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": False},
             projection=input_dim,
             silent=True,
         )
@@ -106,18 +109,20 @@ def main(
             "tag": tag,
         })
 
-    # Saving data by concatenating with what we already have and keeping the latest
-    df = pd.read_csv(df_path, sep=";")
-    df2: pd.DataFrame = pd.DataFrame.from_records(result_records)
-    df = pd.concat([df, df2])
-    df.drop_duplicates(subset=["dim", "tag"], keep="last")
-    df.to_csv(df_path, index=False, sep=";")
+        # Saving data by concatenating with what we already have and keeping the latest
+        df = pd.read_csv(df_path, sep=";")
+        df2: pd.DataFrame = pd.DataFrame.from_records(result_records)
+        df = pd.concat([df, df2])
+        df.sort_values(by=["test_accuracy"], ascending=True, inplace=True)
+        df.drop_duplicates(subset=["dim", "tag"], keep="last", inplace=True)
+        df.sort_values(by=["tag", "dim"], inplace=True)
+        df.to_csv(df_path, index=False, sep=";")
 
-    # Plotting
+    # Updating plot
     plot_data(df, figure_path)
 
 if __name__ == "__main__":
     # main(tag="normal")
-    main(tag="hog")  # you need to uncomment the hog part as well
-    # df = pd.read_csv("figures/plot_projection_df.csv", sep=";")
-    # plot_data(df)
+    # main(tag="hog")  # you need to uncomment the hog part as well
+    df = pd.read_csv("figures/plot_projection_df.csv", sep=";")
+    plot_data(df, save_path="figures/plot_projection_graph.png")
