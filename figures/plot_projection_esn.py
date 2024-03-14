@@ -36,13 +36,13 @@ def plot_data(df: pd.DataFrame, save_path: Optional[str] = None) -> None:
         "marker": "o",
         "markersize": 5
     }
-    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-    ax1.plot(df.loc[:, "dim"], df.loc[:, "train_accuracy"], 
-             label="Train accuracy", **marker_kwargs)
-    ax2.plot(df.loc[:, "dim"], df.loc[:, "test_accuracy"], 
-             label="Test accuracy", **marker_kwargs)
-
-    plt.subplots_adjust(hspace=0.2)
+    for tag in list(df.loc[:, "tag"].unique()):
+        # creating mask
+        m = df["tag"] == tag
+        plt.plot(df.loc[m, "dim"], df.loc[m, "test_accuracy"], 
+                label=tag, **marker_kwargs)
+    plt.ylabel("Accuracy")
+    plt.xlabel("Dimension")
     if save_path is not None: plt.savefig(save_path)
     plt.show()
 
@@ -50,23 +50,27 @@ def plot_data(df: pd.DataFrame, save_path: Optional[str] = None) -> None:
 def main(
         df_path: str = "figures/plot_projection_df.csv",
         figure_path: str = "figures/plot_projection_graph.png",
+        tag: str = "normal"
 ):
     """"""
     mnist_dataloader = MnistDataloader(TRAINING_IMAGES_FILEPATH, TRAINING_LABELS_FILEPATH,
                                         TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
     
     proj_dimensions: List[int] = [
-        *range(10, 50, 10),
-        #*range(100, 300, 50),
-        #*range(300, 501, 100)
+        *range(5, 50, 5),
+        *range(50, 100, 10),
+        *range(100, 200, 25),
+        *range(200, 300, 50),
+        *range(300, 501, 100),
     ]
+    print(proj_dimensions)
     result_records: List[Dict[str, Any]] = []
     for input_dim in tqdm.tqdm(proj_dimensions):
         (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
             normalize=True, 
             # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
             # out_format="column",
-            # hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+            hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
             projection=input_dim,
             silent=True,
         )
@@ -99,16 +103,21 @@ def main(
             "train_accuracy": train_acc,
             "test_accuracy": test_acc,
             "time": computation_time,
+            "tag": tag,
         })
 
-    # Saving data
-    df: pd.DataFrame = pd.DataFrame.from_records(result_records)
+    # Saving data by concatenating with what we already have and keeping the latest
+    df = pd.read_csv(df_path, sep=";")
+    df2: pd.DataFrame = pd.DataFrame.from_records(result_records)
+    df = pd.concat([df, df2])
+    df.drop_duplicates(subset=["dim", "tag"], keep="last")
     df.to_csv(df_path, index=False, sep=";")
 
     # Plotting
     plot_data(df, figure_path)
 
 if __name__ == "__main__":
-    # main()
-    df = pd.read_csv("figures/plot_projection_df.csv", sep=";")
-    plot_data(df)
+    # main(tag="normal")
+    main(tag="hog")  # you need to uncomment the hog part as well
+    # df = pd.read_csv("figures/plot_projection_df.csv", sep=";")
+    # plot_data(df)

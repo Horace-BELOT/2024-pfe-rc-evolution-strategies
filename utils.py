@@ -161,12 +161,13 @@ def accuracy(y_pred: np.ndarray, y_true: np.ndarray) -> float:
 def calc_hog_features(X, image_shape=(28, 28), 
                       cell=(8, 8),
                       block=(2,2),
-                      keep_inputs: Optional[bool] = False):
+                      keep_inputs: Optional[bool] = False,
+                      silent: bool = True):
     """
     Converts input data into Histogram of Oriented Gradients
     """
     fd_list = []
-    for row in tqdm.tqdm(X, "Computing HOG"):
+    for row in tqdm.tqdm(X, "Computing HOG", disable=silent):
         img = row.reshape(image_shape)
         fd = hog(img, orientations=8, pixels_per_cell=cell, cells_per_block=block)
         fd_list.append(fd)
@@ -270,8 +271,8 @@ class MnistDataloader(object):
 
         # HOG
         if hog is not None:
-            x_test_numpy = calc_hog_features(x_test_numpy, **hog)
-            x_train_numpy = calc_hog_features(x_train_numpy, **hog)
+            x_test_numpy = calc_hog_features(x_test_numpy, **hog, silent=silent)
+            x_train_numpy = calc_hog_features(x_train_numpy, **hog, silent=silent)
 
         # Random projection
         if projection is not None:
