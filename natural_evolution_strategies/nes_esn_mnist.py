@@ -62,9 +62,10 @@ def test1():
         nes = NES(
             w=w,
             f=f_reward,
-            pop=25,
+            pop=15,
             sigma=0.000005,
-            alpha=0.001,
+            alpha=0.01,
+            mirrored_sampling=True
         )
         nes.optimize(n_iter=200, graph=True)
         return w

@@ -118,15 +118,18 @@ def nes_test_regression(
         pop=50,
         sigma=5 * 10 ** (-4),
         alpha=5 * 10 ** (-1),
-        mirrored_sampling=True
+        mirrored_sampling=False,
+        n_jobs=3
     )
     training_loss: np.ndarray = nes.optimize(n_iter=300, silent=False, graph=True)
-    plt.plot(np.log10(-training_loss))
+    plt.plot((-training_loss))
     plt.show()
     return
+
 
 
 if __name__ == "__main__":
     # nes_test_simple()
     # nes_test_high_dimension(n=100, p=10, lower_bound=-1, upper_bound=-1)
     nes_test_regression()
+    pass

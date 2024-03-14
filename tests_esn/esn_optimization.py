@@ -20,6 +20,7 @@ except:
     pass
 
 from skopt import gp_minimize
+from skopt.space.space import Real
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import RandomizedSearchCV
 import matplotlib.pyplot as plt
@@ -34,20 +35,10 @@ TEST_IMAGES_FILEPATH = os.path.join(INPUT_PATH, 't10k-images-idx3-ubyte/t10k-ima
 TEST_LABELS_FILEPATH = os.path.join(INPUT_PATH, 't10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte')
 
 
-def esn_loss_fx(x: np.ndarray, y: np.ndarray) -> float:
-    """
-    Args:
-        x: np.ndarray
-            output of the reservoir
-        y: np.ndarray
-            prediction on train value
-
-    """
-    return accuracy()
     
 def f(params: List[Any], x: np.ndarray, y: np.ndarray, index_ref: List[int]) -> float:
     """
-    
+    Loss function called in the Bayesian optimization
     """
     assert len(params) == 4
     spectral_radius, sparsity, input_scaling, feedback_scaling = params
@@ -85,29 +76,30 @@ def main():
     mnist_dataloader = MnistDataloader(TRAINING_IMAGES_FILEPATH, TRAINING_LABELS_FILEPATH, 
                                        TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
     (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+        projection=100,
         normalize=True)
 
-    param_grid: Dict[str, Any] = {
-        "spectral_radius": np.arange(0.5,1,0.02),
-        "sparsity": np.arange(0.5,1,0.02),
-        "input_scaling": np.arange(0.1,1,0.1),
-        "feedback_scaling": np.arange(0.1,1,0.1),
-    }
+    # param_grid: Dict[str, Any] = {
+    #     "spectral_radius": np.arange(0.5,1,0.02),
+    #     "sparsity": np.arange(0.5,1,0.02),
+    #     "input_scaling": np.arange(0.1,1,0.1),
+    #     "feedback_scaling": np.arange(0.1,1,0.1),
+    # }
 
     idx_ref: List[int] = [0]
 
     res = gp_minimize(
         func=lambda z: f(z, x_train, y_train, idx_ref),
         dimensions=[
-            (0.5, 0.99),  # spectral radius
-            (0.4, 0.95),  # sparsity
-            (0.1, 1),  # input_scaling
-            (0.1, 1),  # feedback_scaling
+            Real(0.5, 0.99, prior="uniform"),  # spectral radius
+            Real(0.4, 0.95, prior="uniform"),  # sparsity
+            Real(0.1, 1.00, prior="uniform"),  # input_scaling
+            Real(0.1, 1.00, prior="uniform"),  # feedback_scaling
         ],
         acq_func="EI",
         n_calls=60,
         n_random_starts=5,
-        noise=0.1**2,
+        noise=0.01**2,
         random_state=1234
     )
     print(res.x)
