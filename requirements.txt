@@ -3,3 +3,5 @@ scikit-learn
 pandas
 numpy
 tqdm
+scikit-optimize
+matplotlib
