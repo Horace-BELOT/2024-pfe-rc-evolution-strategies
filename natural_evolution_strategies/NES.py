@@ -104,7 +104,12 @@ class NES:
         return self.f(self.w)
             
 
-    def optimize(self, n_iter: int = 100, silent: bool = False) -> np.ndarray:
+    def optimize(
+            self, 
+            n_iter: int = 100, 
+            silent: bool = False,
+            graph: bool = False,
+            ) -> np.ndarray:
         """
         Runs n_iter steps of the NES algorithm
 
@@ -113,23 +118,54 @@ class NES:
                 Number of iterations
             silent: bool
                 Whether to print results or not
+            graph: bool
+                Whether to show a graph of loss / learning rate / noise
 
         Returns:
             1D np.ndarray of the training loss at the end of each generation
         """
         self.training_loss = np.zeros(n_iter)
+        learning_rates: np.ndarray = np.zeros(n_iter)
+        noises: np.ndarray = np.zeros(n_iter)
+
         pbar = tqdm(range(n_iter), disable=silent)
         if self.f_test is not None:
             self.testing_loss = np.zeros(n_iter)
         for i in pbar:
             self.training_loss[i] = self.step()
+            learning_rates[i] = self.alpha
+            noises[i] = self.sigma
             if self.f_test is not None:
                 self.testing_loss[i] = self.f_test(self.w)
                 pbar.set_description(f"Current loss: {self.training_loss[i]}, " +
                                      f"Test loss: {self.training_loss[i]}")
             else:
                 pbar.set_description(f"Current loss: {self.training_loss[i]}")
+        if graph:  # If asked, we plot the graph
+            self.plot(self.training_loss, learning_rates, noises)
         return self.training_loss
     
+    def plot(
+            self, 
+            loss_arr: np.ndarray, 
+            alpha_arr: np.ndarray, 
+            sigma_arr: np.ndarray
+        ) -> None:
+        n = len(loss_arr)
+        x_arr = [*range(1, n + 1)]
+
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        ax1.plot(x_arr, loss_arr, 'r-')
+        ax1.set_title('Loss')
+
+        ax2.plot(x_arr, alpha_arr, 'g-')
+        ax2.set_title('Learning rate')
+
+        ax3.plot(x_arr, sigma_arr, 'b-')
+        ax3.set_title('Noise')
+
+        fig.text(0.5, 0.04, 'Index', ha='center', fontsize=12)
+
+        plt.show()
 
     

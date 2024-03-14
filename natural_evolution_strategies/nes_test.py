@@ -3,16 +3,18 @@
 """
 import os
 import sys
+from math import sqrt
+import numpy as np
+from typing import List, Dict, Tuple
+
 try:  # Fixing import problems
     if "pyESN.py" not in os.listdir(sys.path[0]):
         upper_folder: str = "\\".join(sys.path[0].split("\\")[:-1])
         sys.path.append(upper_folder)
 except:
     pass
-from natural_evolution_strategies.NES import NES
-import numpy as np
 import matplotlib.pyplot as plt
-from math import sqrt
+from natural_evolution_strategies.NES import NES
 
 
 
@@ -72,7 +74,7 @@ def nes_test_high_dimension(n: int, p: int, lower_bound: float = -1, upper_bound
         sigma=5 * 10 ** (-1),
         alpha=5 * 10 ** (-1)
     )
-    loss_array = nes.optimize(n_iter=400, silent=False)
+    loss_array = nes.optimize(n_iter=400, silent=False, graph=True)
     print(nes.w)
     plt.plot(-np.log10(-loss_array), label="loss")
     plt.show()
@@ -118,7 +120,7 @@ def nes_test_regression(
         alpha=5 * 10 ** (-1),
         mirrored_sampling=True
     )
-    training_loss: np.ndarray = nes.optimize(n_iter=300, silent=False)
+    training_loss: np.ndarray = nes.optimize(n_iter=300, silent=False, graph=True)
     plt.plot(np.log10(-training_loss))
     plt.show()
     return

@@ -66,11 +66,7 @@ def test1():
             sigma=0.000005,
             alpha=0.001,
         )
-        nes.optimize(n_iter=100)
-        nes.alpha = 0.00066
-        nes.optimize(n_iter=100)
-        nes.alpha = 0.00033
-        nes.optimize(n_iter=100)
+        nes.optimize(n_iter=200, graph=True)
         return w
     
     n_samples, input_size = x_train.shape
