@@ -15,6 +15,7 @@ except:
     pass
 import matplotlib.pyplot as plt
 from natural_evolution_strategies.NES import NES
+from utils import pinv
 
 
 
@@ -116,14 +117,17 @@ def nes_test_regression(
         w=A_opt,
         f=reward_func,
         pop=50,
-        sigma=5 * 10 ** (-4),
+        sigma=5 * 10 ** (-6),
         alpha=5 * 10 ** (-1),
         mirrored_sampling=False,
-        n_jobs=3
     )
-    training_loss: np.ndarray = nes.optimize(n_iter=300, silent=False, graph=True)
-    plt.plot((-training_loss))
-    plt.show()
+    training_loss: np.ndarray = nes.optimize(n_iter=150, silent=False, graph=True)
+    nes.alpha = 5 * 10 ** (-2)
+    training_loss: np.ndarray = nes.optimize(n_iter=150, silent=False, graph=True)
+    # We then want to compute the optimal value
+    A_opt = pinv(x, y)
+    print(f"Optimal loss: {reward_func(A_opt)}")
+
     return
 
 

@@ -56,6 +56,7 @@ def test1():
         """"""
         # We start from an array fitted on 100 samples
         w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
+        w = np.zeros_like(w)
         def f_reward(w_temp: np.ndarray) -> float:
             return -np.linalg.norm(np.dot(x, w_temp.T) - y) / (y.shape[0] * y.shape[1])
 
@@ -67,7 +68,10 @@ def test1():
             alpha=0.01,
             mirrored_sampling=True
         )
-        nes.optimize(n_iter=200, graph=True)
+        for _ in range(10):
+            nes.optimize(n_iter=50, graph=False)
+            nes.alpha /= 2
+        
         return w
     
     n_samples, input_size = x_train.shape
@@ -90,6 +94,14 @@ def test1():
     test_acc = accuracy(pred_test, y_test)
     print(f"Training accuracy: {100*train_acc:.2f}%")
     print(f"Testing accuracy: {100*test_acc:.2f}%")
+    pred_test = esn.predict(x_test, continuation=False)
+    final_loss = -np.linalg.norm(pred_test - y_test) / (y_test.shape[0] * y_test.shape[1])
+    print(f"Loss: {final_loss}")
+    esn.learn_method = "pinv"
+    esn.fit(x_train, y_train)
+    pred_test = esn.predict(x_test, continuation=False)
+    loss_real = -np.linalg.norm(pred_test - y_test) / (y_test.shape[0] * y_test.shape[1])
+    print(f"Real Loss: {loss_real}")
     return
 
 
