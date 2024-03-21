@@ -13,6 +13,7 @@ import numpy as np
 from typing import Optional, Callable, Any, List, Tuple
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import pandas as pd
 from math import sqrt
 
 
@@ -25,6 +26,7 @@ class NES:
             pop: int = 50, # population size
             sigma: float = 0.1, # noise standard deviation
             alpha: float = 0.001, # learning rate
+            adaptive_rate: bool = False,
             mirrored_sampling: bool = False,
             f_test: Optional[Callable[[np.ndarray], float]] = None, # function to check testing loss
         ):
@@ -40,6 +42,8 @@ class NES:
                 Spread noise of the new generation from the precendent
             alpha: float
                 Learning rate
+            adaptive_rate: bool
+                Whether to adapt the learning rate
             mirrored_sampling: bool
                 Replaces the estimation of f(w + e) by (f(w + e) - f(w - e)) / 2
                 **THIS WILL DOUBLE THE COMPUTATION TIME FOR A GIVEN POPULATION**
@@ -55,9 +59,10 @@ class NES:
         self.f: Callable[[np.ndarray], float] = f
         self.f_test: Optional[Callable[[np.ndarray], float]] = f_test
         self.mirrored_sampling: bool = mirrored_sampling
+        self.adaptive_rate: bool = adaptive_rate
+        self.n_avg: int = 5
 
-        self.training_loss: Optional[np.ndarray] = None
-        self.testing_loss: Optional[np.ndarray] = None
+        self.data = pd.DataFrame(columns=["train_loss", "test_loss", "alpha", "noise"])
         
     def step(self):
         """
@@ -124,47 +129,77 @@ class NES:
         Returns:
             1D np.ndarray of the training loss at the end of each generation
         """
-        self.training_loss = np.zeros(n_iter)
-        learning_rates: np.ndarray = np.zeros(n_iter)
-        noises: np.ndarray = np.zeros(n_iter)
+        window_size = 15
 
         pbar = tqdm(range(n_iter), disable=silent)
-        if self.f_test is not None:
-            self.testing_loss = np.zeros(n_iter)
         for i in pbar:
-            self.training_loss[i] = self.step()
-            learning_rates[i] = self.alpha
-            noises[i] = self.sigma
+            n = len(self.data)
+
+            self.data.loc[n, "noise"] = self.sigma
+            self.data.loc[n, "alpha"] = self.alpha
+            self.data.loc[n, "train_loss"] = self.step()
+            self.data.loc[:, "score"] = (self.data["train_loss"].diff() > 0).rolling(window_size).sum() / window_size
+            # self.data.loc[:, "score"] = self.data["train_loss"].rolling(5).mean().diff(1).dropna() / self.data.loc[5:, "alpha"]
+            if self.adaptive_rate:
+
+                if self.data.loc[n, "score"] >= 0.95:
+                    self.alpha *= 1.03
+                elif self.data.loc[n, "score"] <= 0.75:
+                    self.alpha /= 1.03
             if self.f_test is not None:
-                self.testing_loss[i] = self.f_test(self.w)
-                pbar.set_description(f"Current loss: {self.training_loss[i]}, " +
-                                     f"Test loss: {self.training_loss[i]}")
+                self.data.loc[n, "test_loss"] = self.f_test(self.w)
+                pbar.set_description(f"Current loss: {self.data.loc[n, 'train_loss']}, " +
+                                     f"Test loss: {self.data.loc[n, 'test_loss'][i]}")
             else:
-                pbar.set_description(f"Current loss: {self.training_loss[i]}")
+                pbar.set_description(f"Current loss: {self.data.loc[n, 'train_loss']}")
+
         if graph:  # If asked, we plot the graph
-            self.plot(self.training_loss, learning_rates, noises)
-        return self.training_loss
+            self.plot(log=True)
+        return self.data["train_loss"].iloc[-1]
     
     def plot(
             self, 
-            loss_arr: np.ndarray, 
-            alpha_arr: np.ndarray, 
-            sigma_arr: np.ndarray
+            log: bool = False,
+            save_path: Optional[str] = None,
+            optimal_value: Optional[float] = None
         ) -> None:
-        n = len(loss_arr)
-        x_arr = [*range(1, n + 1)]
 
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-        ax1.plot(x_arr, loss_arr, 'r-')
-        ax1.set_title('Loss')
+        fig, (ax1, ax2, ax4) = plt.subplots(3, 1, sharex=True)
+        df: pd.DataFrame = self.data.copy()
+        df["train_loss"] = np.abs(df["train_loss"].astype(float))
+        df["alpha"] = df["alpha"].astype(float)
+        df["noise"] = df["noise"].astype(float)
+        ax1.plot(df.index, df.loc[:, "train_loss"], 'r-')
+        if optimal_value is not None:
+            ax1.plot(df.index, [optimal_value for _ in df.index], 'g-')
+        # ax1.set_title('Loss')
 
-        ax2.plot(x_arr, alpha_arr, 'g-')
-        ax2.set_title('Learning rate')
+        ax2.plot(df.index, df.loc[:, "alpha"], 'g-')
+        # ax2.set_title('Learning rate')
 
-        ax3.plot(x_arr, sigma_arr, 'b-')
-        ax3.set_title('Noise')
+        # ax3.plot(df.index, df.loc[:, "noise"], 'b-')
+        # ax3.set_title('Noise')
+        
+        ax4.plot(df["score"].dropna().index, df["score"].dropna().abs(), "b-")
+        ser = df["score"].dropna().abs()
+        ser[ser > 0] = None
+        ax4.plot(ser.index, ser, color="red")
+        # ax4.set_yscale("log")
+        
+        if log:
+            ax1.set_yscale("log")
+            ax2.set_yscale("log")
+            # ax3.set_yscale("log")
+        
+        ax1.grid(True)
+        ax2.grid(True)
+        # ax3.grid(True)
+        ax4.grid(True)
+        fig.text(0.5, 0.04, 'Step', ha='center', fontsize=12)
 
-        fig.text(0.5, 0.04, 'Index', ha='center', fontsize=12)
+        # plt.title(f"Steps: {len(self.df)},")
+        if save_path is not None:
+            fig.savefig(save_path)
 
         plt.show()
 

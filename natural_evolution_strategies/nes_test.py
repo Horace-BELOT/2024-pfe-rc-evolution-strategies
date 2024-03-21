@@ -75,7 +75,7 @@ def nes_test_high_dimension(n: int, p: int, lower_bound: float = -1, upper_bound
         sigma=5 * 10 ** (-1),
         alpha=5 * 10 ** (-1)
     )
-    loss_array = nes.optimize(n_iter=400, silent=False, graph=True)
+    loss_array = nes.optimize(n_iter=500, silent=False, graph=True)
     print(nes.w)
     plt.plot(-np.log10(-loss_array), label="loss")
     plt.show()
@@ -91,8 +91,8 @@ def nes_test_regression(
     We want to optimize A as to minimize the distance (y - AX) 
     """
     n_samples: int = 1000
-    n_targets: int = 10
-    n_inputs: int = 100
+    n_targets: int = 1
+    n_inputs: int = 700
     noise: float = 0.1
     a, b = (-1, 1)
     x: np.ndarray = (a - b) * np.random.rand(n_samples, n_inputs) + a
@@ -116,17 +116,20 @@ def nes_test_regression(
     nes = NES(
         w=A_opt,
         f=reward_func,
-        pop=50,
-        sigma=5 * 10 ** (-6),
+        pop=200,
+        sigma=5 * 10 ** (-15),
         alpha=5 * 10 ** (-1),
-        mirrored_sampling=False,
+        mirrored_sampling=True,
+        adaptive_rate=True,
     )
-    training_loss: np.ndarray = nes.optimize(n_iter=150, silent=False, graph=True)
-    nes.alpha = 5 * 10 ** (-2)
-    training_loss: np.ndarray = nes.optimize(n_iter=150, silent=False, graph=True)
+    training_loss: np.ndarray = nes.optimize(n_iter=500, silent=False, graph=False)
+    A_best = pinv(x, y)
+    optimal_value = reward_func(A_best)
+    print(f"Optimal loss: {optimal_value} - Optimal / Result: {optimal_value / training_loss}")
+    nes.plot(log=True, save_path="figures/nes_test_regression", optimal_value=optimal_value)
+    # nes.alpha = 5 * 10 ** (-2)
+    # training_loss: np.ndarray = nes.optimize(n_iter=150, silent=False, graph=True)
     # We then want to compute the optimal value
-    A_opt = pinv(x, y)
-    print(f"Optimal loss: {reward_func(A_opt)}")
 
     return
 
