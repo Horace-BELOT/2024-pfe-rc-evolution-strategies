@@ -92,7 +92,7 @@ def nes_test_regression(
     """
     n_samples: int = 1000
     n_targets: int = 1
-    n_inputs: int = 700
+    n_inputs: int = 100
     noise: float = 0.1
     a, b = (-1, 1)
     x: np.ndarray = (a - b) * np.random.rand(n_samples, n_inputs) + a
@@ -112,6 +112,9 @@ def nes_test_regression(
         """Reward function to optimize. - L2_loss(AX - y)"""
         # return - np.sqrt(np.sum(np.square(np.dot(z, x.T).T - y)))
         return - np.linalg.norm(np.dot(z, x.T).T - y) / (n_samples * n_targets)
+    A_best = pinv(x, y)
+    optimal_value = reward_func(A_best)
+    print(f"Optimal loss: {optimal_value}")
     
     nes = NES(
         w=A_opt,
@@ -122,10 +125,8 @@ def nes_test_regression(
         mirrored_sampling=True,
         adaptive_rate=True,
     )
-    training_loss: np.ndarray = nes.optimize(n_iter=500, silent=False, graph=False)
-    A_best = pinv(x, y)
-    optimal_value = reward_func(A_best)
-    print(f"Optimal loss: {optimal_value} - Optimal / Result: {optimal_value / training_loss}")
+    training_loss: np.ndarray = nes.optimize(n_iter=5000, silent=False, graph=False)
+
     nes.plot(log=True, save_path="figures/nes_test_regression", optimal_value=optimal_value)
     # nes.alpha = 5 * 10 ** (-2)
     # training_loss: np.ndarray = nes.optimize(n_iter=150, silent=False, graph=True)
