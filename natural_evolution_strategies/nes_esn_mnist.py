@@ -5,10 +5,12 @@ import sys
 import os
 import multiprocessing
 import numpy as np
+import pandas as pd
 
+import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import SGDClassifier
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 try:  # Fixing import problems
     if "pyESN.py" not in os.listdir(sys.path[0]):
@@ -228,6 +230,7 @@ def function_for_each_process(i: int):
         i: int
             which target [0, 9] of MNIST to regress using NES
     """
+    print(f"Process {i}: Starting")
     esn: ESN = ESN.load("saved_data/base_esn.pickle")
 
     # We define the start of the NES object
@@ -241,54 +244,52 @@ def function_for_each_process(i: int):
         mirrored_sampling=True,
         adaptive_rate=True,
     )
-
+    
     def custom_method(x: np.ndarray, y: np.ndarray) -> np.ndarray:
         """"""
         # We start from an array fitted on 100 samples
-        # w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
-        w = np.zeros_like(w)
+        w = esn.W_out.copy()
         def f_reward(w_temp: np.ndarray) -> float:
             return -np.linalg.norm(np.dot(x, w_temp.T) - y) / (y.shape[0] * y.shape[1])
         nes.f = f_reward
+        nes.w = w
 
         nes.optimize(n_iter=2000, graph=False)
         
         return w
     
+    # We change the learning method
+    esn.learn_method = "custom"
+    esn.custom_method = custom_method
+
     # We load the mnist data
     mnist_dict: Dict[str, np.ndarray] = load_pickle("saved_data/mnist_data_test_parallel_run.pickle")
     x_train = mnist_dict["x_train"]
     y_train = mnist_dict["y_train"]
     x_test = mnist_dict["x_test"]
     y_test = mnist_dict["y_test"]
-    input_size: int = x_train.shape[0]
+    input_size: int = x_train.shape[1]
 
     # We only keep 1 output
-    y_train = y_train[:, i]
-    y_test = y_test[:, i]
+    y_train = y_train[:, i].reshape((y_train.shape[0], 1))
+    y_test = y_test[:, i].reshape((y_test.shape[0], 1))
 
-    esn = ESN(
-        n_inputs=input_size,
-        n_outputs=1,
-        spectral_radius=0.8,
-        n_reservoir=20,
-        sparsity=0.5,
-        silent=False,
-        input_scaling=0.7,
-        feedback_scaling=0.2,
-        wash_out=25,
-        learn_method="custom",
-        custom_method=custom_method,
-    )
+    print(f"Process {i}: Training")
+    # print(f"Mean of weights pre training: {np.abs(esn.W_out).mean()}")
     pred_train = esn.fit(x_train, y_train)
     pred_test = esn.predict(x_test, continuation=False)
     train_acc = accuracy(pred_train, y_train)
     test_acc = accuracy(pred_test, y_test)
-    print(f"Training accuracy for process {i}: {100 * train_acc:.2f}%")
-    print(f"Testing accuracy for process {i}: {100 * test_acc:.2f}%")
+    # print(f"Mean of weights post training: {np.abs(esn.W_out).mean()}")
+    # print(f"Sum of preds: {pred_test.sum()}")
+    # print((np.hstack([pred_test, y_test])[:25,:]).T)
+    print(f"Training accuracy for process {i}: {100 * train_acc:.2f}%\n" + 
+          f"Testing accuracy for process {i}: {100 * test_acc:.2f}%\n" +
+          f"Process {i} finished !\n")
 
     # We then save the model:
     path_i: str = f"saved_data/results_{i}.pickle"
+    print(f"Process {i}: Saving")
     save_pickle(
         file_path=path_i,
         obj={
@@ -297,7 +298,28 @@ def function_for_each_process(i: int):
             "W_out": esn.W_out
         }
     )
+    print(f"Process {i}: Done")
+    return (1,1)
 
+
+def plot_results_parallel_run(
+        df: Optional[pd.DataFrame],
+        save_path: str,
+    ) -> None:
+    """
+    Plots the result of the accuracy
+    """
+    if isinstance(df, str):
+        df = pd.read_csv(df, sep=";")
+
+    # fig, axs = plt.subplots(2)
+    for target_value in df["target_mnist"].unique():
+        subdf = df.loc[df["target_mnist"] == target_value, :].copy()
+        subdf = subdf.sort_values(["index"], ascending=True)
+        plt.plot(subdf["index"], subdf["train_loss"], label=f"Number {target_value}")
+    plt.xscale("log")
+    plt.savefig(save_path)
+    plt.show()
 
     
 
@@ -314,7 +336,7 @@ def parallel_run_mnist():
         projection=200,
         silent=False,
     )
-    n_inputs: int = x_train.shape[0]
+    n_inputs: int = x_train.shape[1]
 
     # We then create an ESN with only 1 output
     esn = ESN(
@@ -323,7 +345,7 @@ def parallel_run_mnist():
         spectral_radius=0.8,
         n_reservoir=50,
         sparsity=0.5,
-        silent=False,
+        silent=True,
         input_scaling=0.7,
         feedback_scaling=0.2,
         wash_out=25,
@@ -337,17 +359,18 @@ def parallel_run_mnist():
         "x_train": x_train, "y_train": y_train, "x_test": x_test, "y_test": y_test,
         }, file_path="saved_data/mnist_data_test_parallel_run.pickle"
     )
-
+    
     # We delete some objects to free memory
     del esn; del x_train; del y_train; del x_test; del y_test
     with multiprocessing.Pool(processes=10) as pool:
-        pool.starmap(function_for_each_process, [*range(10)])
+        for i in range(10):
+            pool.apply_async(function_for_each_process, (i,))
         pool.close()
         pool.join()
-
+    print(f"\n\nFinished the multiple processes\n\n")
     results = {i: load_pickle(f"saved_data/results_{i}.pickle")
                for i in range(10)}
-
+    
     # We load the mnist data
     mnist_dict: Dict[str, np.ndarray] = load_pickle("saved_data/mnist_data_test_parallel_run.pickle")
     x_train = mnist_dict["x_train"]
@@ -366,12 +389,22 @@ def parallel_run_mnist():
     # Feedback loop shape doesnt match anymore
     esn.W_fb = esn.random_state_.rand(esn.n_reservoir, esn.n_outputs) * 2 - 1
     esn.W_fb *= esn.feedback_scaling
+    esn.silent = False
     pred_test = esn.predict(x_test, continuation=False)
     test_acc = accuracy(pred_test, y_test)
     print(f"Final Testing accuracy: {100*test_acc:.2f}%")
     esn.save("saved_data/final_esn_trained_with_nes.pickle")
+    for i in range(10):
+        results[i]["df"]["target_mnist"] = i
+        results[i]["df"]["index"] = results[i]["df"].index
+    df = pd.concat([results[i]["df"] for i in range(10)])
+    df.to_csv("saved_data/loss_data_df.csv", sep=";", index=True)
 
         
 if __name__ == "__main__":
-    test1_one_output()
-
+    # test1_one_output()
+    # parallel_run_mnist()
+    plot_results_parallel_run(
+        df="saved_data/loss_data_df.csv",
+        save_path="saved_data/train_graph.png"
+    )

@@ -133,6 +133,7 @@ class NES:
 
         pbar = tqdm(range(n_iter), disable=silent)
         for i in pbar:
+            # print(f"Mean of weights while training {i}/{n_iter}: {np.abs(self.w).mean()}")
             n = len(self.data)
 
             self.data.loc[n, "noise"] = self.sigma

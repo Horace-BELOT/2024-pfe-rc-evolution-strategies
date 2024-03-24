@@ -111,8 +111,8 @@ class ESN:
         self.W_in: np.ndarray  # Input layer matrix
         self.W_out: np.ndarray  # Output layer matrix (shape = n_outputs x n_reservoir)
         self.W_fb: np.ndarray  # Feedback connectivity array
-        self.states: np.ndarray  # list of consecutive reservoir states (N x n_reservoir)
-        self.extended_states: np.ndarray  # states + inputs (N x (n_reservoir + n_inputs))
+        self.states: np.ndarray  = None # list of consecutive reservoir states (N x n_reservoir)
+        self.extended_states: np.ndarray = None  # states + inputs (N x (n_reservoir + n_inputs))
 
         self.build_matrixes()
 
