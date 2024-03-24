@@ -5,6 +5,7 @@ It also contains a MnistDataloader that should ease the loading of MNIST data
 
 import os
 import inspect
+import pickle
 import numpy as np
 import struct
 from array import array
@@ -381,6 +382,24 @@ def test_sgd():
     # clf.coef_
     A = sgd(X, Y, alpha=0.001, silent=False) 
     return
+
+
+def save_pickle(obj: Dict[Any, Any], file_path: str) -> None:
+    """
+    Saves the content of the ESN object to a pickle fle
+    """
+    if ".pickle" not in file_path:
+        file_path = file_path + ".pickle"
+    with open(file_path, "wb") as handle:
+        pickle.dump(obj, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+def load_pickle(file_path: str) -> Dict[Any, Any]:
+    """
+    Loads an ESN object from 
+    """
+    with open(file_path, "rb") as handle:
+        obj: Dict[str, Any] = pickle.load(handle)
+    return obj
 
 if __name__ == "__main__":
     test_sgd()

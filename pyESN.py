@@ -11,6 +11,7 @@ x[n + 1] = activation(W * x[n] + W_in * u(n + 1) + W_fb * y[n])
 
 import numpy as np
 import tqdm
+import pickle
 from sklearn.base import BaseEstimator
 
 from utils import * 
@@ -97,12 +98,12 @@ class ESN:
         self.random_state_: np.random.RandomState
         if isinstance(random_state, np.random.RandomState):
             self.random_state_ = random_state
-        elif random_state:
+        elif isinstance(random_state, int):
             try:
                 self.random_state_ = np.random.RandomState(random_state)
             except TypeError as e:
                 raise Exception("Invalid seed: " + str(e))
-        else:
+        else:  # random_state is None
             self.random_state_ = np.random.mtrand._rand
 
         # Network components
@@ -114,6 +115,79 @@ class ESN:
         self.extended_states: np.ndarray  # states + inputs (N x (n_reservoir + n_inputs))
 
         self.build_matrixes()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Builds a dictionnary containing all the elements of the ESN object
+        """
+        return {
+            "args": {
+                "n_inputs": self.n_inputs,
+                "n_outputs": self.n_outputs,
+                "n_reservoir": self.n_reservoir,
+                "spectral_radius": self.spectral_radius,
+                "sparsity": self.sparsity,
+                "leaky_rate": self.leaky_rate,
+                "noise": self.noise,
+                "state_activ_fx": self.state_activ_fx,
+                "out_activ": self.out_activ,
+                "out_activ_inv": self.out_activ_inv,
+                "wash_out": self.wash_out,
+                "input_scaling": self.input_scaling,
+                "feedback_scaling": self.feedback_scaling,
+                "input_to_output_ratio": self.input_to_output_ratio,
+
+                "learn_method": self.learn_method,
+                "custom_method": self.custom_method,
+                "ridge_noise": self.ridge_noise,
+                "learning_rate": self.learning_rate,
+
+                "silent": self.silent,
+            },
+            "objects": {
+                "random_state_": self.random_state_,
+                "W": self.W,
+                "W_in": self.W_in,
+                "W_out": self.W_out,
+                "W_fb": self.W_fb,
+                "states": self.states,
+                "extended_states": self.extended_states,
+            }
+        }
+
+    def save(self, file_path: str) -> None:
+        """
+        Saves the content of the ESN object to a pickle fle
+        """
+        if ".pickle" not in file_path:
+            file_path = file_path + ".pickle"
+        with open(file_path, "wb") as handle:
+            pickle.dump(self.to_dict(), handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def load(file_path: str) -> "ESN":
+        """
+        Loads an ESN object from 
+        """
+        with open(file_path, "rb") as handle:
+            loaded_data: Dict[str, Any] = pickle.load(handle)
+
+        esn = ESN(**loaded_data["args"])
+        if loaded_data["objects"].get("random_state_") is not None:
+            esn.random_state_ = loaded_data["objects"].get("random_state_")
+        if loaded_data["objects"].get("W") is not None:
+            esn.W = loaded_data["objects"].get("W")
+        if loaded_data["objects"].get("W_in") is not None:
+            esn.W_in = loaded_data["objects"].get("W_in")
+        if loaded_data["objects"].get("W_out") is not None:
+            esn.W_out = loaded_data["objects"].get("W_out")
+        if loaded_data["objects"].get("W_fb") is not None:
+            esn.W_fb = loaded_data["objects"].get("W_fb")
+        if loaded_data["objects"].get("states") is not None:
+            esn.states = loaded_data["objects"].get("states")
+        if loaded_data["objects"].get("extended_states") is not None:
+            esn.extended_states = loaded_data["objects"].get("extended_states")
+        return esn
+        
 
     def build_matrixes(self):
         """
@@ -257,6 +331,21 @@ class ESN:
         Returns:
             np.ndarray representing the prediction of the model on the trainset (N x n_outputs)
         """
+        if inputs.ndim < 2: inputs = np.reshape(inputs, (len(inputs), -1))
+        if inputs.shape[1] != self.n_inputs: 
+            raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_inputs})")
+        n: int = inputs.shape[0]
+        
+        if outputs is None:  # If no outputs is given
+            outputs = np.zeros(shape=(n, self.n_outputs))
+        else:
+            if outputs.ndim < 2: outputs = np.reshape(outputs, (len(outputs), -1))
+            if outputs.shape[1] != self.n_outputs: 
+                raise ValueError(f"Inputs are of wrong shape: {inputs.shape} instead of (N, {self.n_outputs})")
+            # Checking if inputs and outputs have the same size
+            if outputs.shape[0] != inputs.shape[0]:
+                raise ValueError(f"Inputs and Outputs have different shapes ({outputs.shape[0]} != {inputs.shape[0]})")
+        
         x, _ = self.feed(inputs, outputs, wash_out=self.wash_out)
         t: int = self.input_to_output_ratio
         y: np.ndarray = outputs[self.wash_out + (t - 1)::t, :]

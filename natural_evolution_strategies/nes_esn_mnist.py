@@ -3,9 +3,12 @@ ESN x NES implementation example.
 """
 import sys
 import os
+import multiprocessing
 import numpy as np
+
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import SGDClassifier
+from typing import Dict, List, Any
 
 try:  # Fixing import problems
     if "pyESN.py" not in os.listdir(sys.path[0]):
@@ -14,7 +17,7 @@ try:  # Fixing import problems
 except:
     pass
 from pyESN import ESN
-from utils import split_set, MnistDataloader, accuracy, pinv
+from utils import split_set, MnistDataloader, accuracy, pinv, save_pickle, load_pickle
 from natural_evolution_strategies.NES import NES
 
 INPUT_PATH = 'data'
@@ -43,7 +46,7 @@ def test1_one_output():
     mnist_dataloader = MnistDataloader(
         TRAINING_IMAGES_FILEPATH, TRAINING_LABELS_FILEPATH, 
         TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
-    (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+    (x_train, y_train_base), (x_test, y_test_base) = mnist_dataloader.prepare_data(
         normalize=True, 
         # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
         # out_format="column",
@@ -51,59 +54,64 @@ def test1_one_output():
         projection=200,
         silent=False,
     )
-    y_train = y_train[:, 2]
-    y_test = y_test[:, 2]
+    out_matrixes = []
+    for k in range(10):
+        print(f"\n\nCurrent index: {k}")
+        y_train = y_train_base[:, k].reshape((y_train_base.shape[0], 1))
+        y_test = y_test_base[:, k].reshape((y_test_base.shape[0], 1))
 
-    def custom_method(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-        """"""
-        # We start from an array fitted on 100 samples
-        # w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
-        w = np.zeros_like(w)
-        def f_reward(w_temp: np.ndarray) -> float:
-            return -np.linalg.norm(np.dot(x, w_temp.T) - y) / (y.shape[0] * y.shape[1])
+        def custom_method(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+            """"""
+            # We start from an array fitted on 100 samples
+            w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
+            w = np.zeros_like(w)
+            def f_reward(w_temp: np.ndarray) -> float:
+                return -np.linalg.norm(np.dot(x, w_temp.T) - y) / (y.shape[0] * y.shape[1])
 
-        nes = NES(
-            w=w,
-            f=f_reward,
-            pop=15,
-            sigma=0.000005,
-            alpha=0.01,
-            mirrored_sampling=True
-        )
+            nes = NES(
+                w=w,
+                f=f_reward,
+                pop=25,
+                sigma=5 * 10 ** (-10),
+                alpha=0.01,
+                mirrored_sampling=True
+            )
 
-        nes.optimize(n_iter=50, graph=False)
+            nes.optimize(n_iter=50, graph=False)
+            
+            return w
         
-        return w
+        n_samples, input_size = x_train.shape
+        esn = ESN(
+            n_inputs=input_size,
+            n_outputs=1,
+            spectral_radius=0.8,
+            n_reservoir=50,
+            sparsity=0.5,
+            silent=False,
+            input_scaling=0.7,
+            feedback_scaling=0.2,
+            wash_out=25,
+            learn_method="custom",
+            custom_method=custom_method,
+            random_state=12
+        )
+        pred_train = esn.fit(x_train, y_train)
+        pred_test = esn.predict(x_test, continuation=False)
+        train_acc = accuracy(pred_train, y_train)
+        test_acc = accuracy(pred_test, y_test)
+        print(f"Training accuracy: {100*train_acc:.2f}%")
+        print(f"Testing accuracy: {100*test_acc:.2f}%")
+        pred_test = esn.predict(x_test, continuation=False)
+        final_loss = -np.linalg.norm(pred_test - y_test) / (y_test.shape[0] * y_test.shape[1])
+        print(f"Loss: {final_loss}")
+        esn.learn_method = "pinv"
+        esn.fit(x_train, y_train)
+        pred_test = esn.predict(x_test, continuation=False)
+        loss_real = -np.linalg.norm(pred_test - y_test) / (y_test.shape[0] * y_test.shape[1])
+        print(f"Real Loss: {loss_real}")
+        return
     
-    n_samples, input_size = x_train.shape
-    esn = ESN(
-        n_inputs=input_size,
-        n_outputs=1,
-        spectral_radius=0.8,
-        n_reservoir=20,
-        sparsity=0.5,
-        silent=False,
-        input_scaling=0.7,
-        feedback_scaling=0.2,
-        wash_out=25,
-        learn_method="custom",
-        custom_method=custom_method,
-    )
-    pred_train = esn.fit(x_train, y_train)
-    pred_test = esn.predict(x_test, continuation=False)
-    train_acc = accuracy(pred_train, y_train)
-    test_acc = accuracy(pred_test, y_test)
-    print(f"Training accuracy: {100*train_acc:.2f}%")
-    print(f"Testing accuracy: {100*test_acc:.2f}%")
-    pred_test = esn.predict(x_test, continuation=False)
-    final_loss = -np.linalg.norm(pred_test - y_test) / (y_test.shape[0] * y_test.shape[1])
-    print(f"Loss: {final_loss}")
-    esn.learn_method = "pinv"
-    esn.fit(x_train, y_train)
-    pred_test = esn.predict(x_test, continuation=False)
-    loss_real = -np.linalg.norm(pred_test - y_test) / (y_test.shape[0] * y_test.shape[1])
-    print(f"Real Loss: {loss_real}")
-    return
 
 
 def test1():
@@ -126,7 +134,7 @@ def test1():
     def custom_method(x: np.ndarray, y: np.ndarray) -> np.ndarray:
         """"""
         # We start from an array fitted on 100 samples
-        # w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
+        w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
         w = np.zeros_like(w)
         def f_reward(w_temp: np.ndarray) -> float:
             return -np.linalg.norm(np.dot(x, w_temp.T) - y) / (y.shape[0] * y.shape[1])
@@ -208,9 +216,162 @@ def test2():
     esn.fit(x_train[:5000], y_train[:5000])
     esn.silent = True
 
-    nes.optimize(n_iter=20, silent=False)
+    # nes.optimize(n_iter=20, silent=False)
 
 
+def function_for_each_process(i: int):
+    """
+    This is the function that will be executed in parallel in each process in the
+    next function (parallel_run_mnist).
+
+    Args:
+        i: int
+            which target [0, 9] of MNIST to regress using NES
+    """
+    esn: ESN = ESN.load("saved_data/base_esn.pickle")
+
+    # We define the start of the NES object
+    # NES object will be updated inside custom_method
+    nes = NES(
+        w=esn.W_out,
+        f=lambda x: None,  # This function will be changed after
+        pop=15,
+        sigma=0.000005,
+        alpha=0.01,
+        mirrored_sampling=True,
+        adaptive_rate=True,
+    )
+
+    def custom_method(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """"""
+        # We start from an array fitted on 100 samples
+        # w: np.ndarray = pinv(x[1000:1100], y[1000:1100])
+        w = np.zeros_like(w)
+        def f_reward(w_temp: np.ndarray) -> float:
+            return -np.linalg.norm(np.dot(x, w_temp.T) - y) / (y.shape[0] * y.shape[1])
+        nes.f = f_reward
+
+        nes.optimize(n_iter=2000, graph=False)
+        
+        return w
+    
+    # We load the mnist data
+    mnist_dict: Dict[str, np.ndarray] = load_pickle("saved_data/mnist_data_test_parallel_run.pickle")
+    x_train = mnist_dict["x_train"]
+    y_train = mnist_dict["y_train"]
+    x_test = mnist_dict["x_test"]
+    y_test = mnist_dict["y_test"]
+    input_size: int = x_train.shape[0]
+
+    # We only keep 1 output
+    y_train = y_train[:, i]
+    y_test = y_test[:, i]
+
+    esn = ESN(
+        n_inputs=input_size,
+        n_outputs=1,
+        spectral_radius=0.8,
+        n_reservoir=20,
+        sparsity=0.5,
+        silent=False,
+        input_scaling=0.7,
+        feedback_scaling=0.2,
+        wash_out=25,
+        learn_method="custom",
+        custom_method=custom_method,
+    )
+    pred_train = esn.fit(x_train, y_train)
+    pred_test = esn.predict(x_test, continuation=False)
+    train_acc = accuracy(pred_train, y_train)
+    test_acc = accuracy(pred_test, y_test)
+    print(f"Training accuracy for process {i}: {100 * train_acc:.2f}%")
+    print(f"Testing accuracy for process {i}: {100 * test_acc:.2f}%")
+
+    # We then save the model:
+    path_i: str = f"saved_data/results_{i}.pickle"
+    save_pickle(
+        file_path=path_i,
+        obj={
+            "i": i,
+            "df": nes.data,
+            "W_out": esn.W_out
+        }
+    )
+
+
+    
+
+def parallel_run_mnist():
+    # Loads MNIST data
+    mnist_dataloader = MnistDataloader(
+        TRAINING_IMAGES_FILEPATH, TRAINING_LABELS_FILEPATH, 
+        TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
+    (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+        normalize=True, 
+        # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
+        # out_format="column",
+        # hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": True},
+        projection=200,
+        silent=False,
+    )
+    n_inputs: int = x_train.shape[0]
+
+    # We then create an ESN with only 1 output
+    esn = ESN(
+        n_inputs=n_inputs,
+        n_outputs=1,
+        spectral_radius=0.8,
+        n_reservoir=50,
+        sparsity=0.5,
+        silent=False,
+        input_scaling=0.7,
+        feedback_scaling=0.2,
+        wash_out=25,
+        learn_method="sgd",
+        learning_rate=0.00001
+    )
+    # We then save the model
+    esn.save(file_path="saved_data/base_esn.pickle")
+    # We save the data (because the projection is sometimes not reproductible)
+    save_pickle({
+        "x_train": x_train, "y_train": y_train, "x_test": x_test, "y_test": y_test,
+        }, file_path="saved_data/mnist_data_test_parallel_run.pickle"
+    )
+
+    # We delete some objects to free memory
+    del esn; del x_train; del y_train; del x_test; del y_test
+    with multiprocessing.Pool(processes=10) as pool:
+        pool.starmap(function_for_each_process, [*range(10)])
+        pool.close()
+        pool.join()
+
+    results = {i: load_pickle(f"saved_data/results_{i}.pickle")
+               for i in range(10)}
+
+    # We load the mnist data
+    mnist_dict: Dict[str, np.ndarray] = load_pickle("saved_data/mnist_data_test_parallel_run.pickle")
+    x_train = mnist_dict["x_train"]
+    y_train = mnist_dict["y_train"]
+    x_test = mnist_dict["x_test"]
+    y_test = mnist_dict["y_test"]
+
+    # We rebuild the ESN object
+    esn: ESN = ESN.load("saved_data/base_esn.pickle")
+    # We rebuild the entire array
+    esn.W_out = np.vstack([
+        results[i]["W_out"] for i in range(10)
+    ])
+    # We then need to change the number of outputs
+    esn.n_outputs = 10
+    # Feedback loop shape doesnt match anymore
+    esn.W_fb = esn.random_state_.rand(esn.n_reservoir, esn.n_outputs) * 2 - 1
+    esn.W_fb *= esn.feedback_scaling
+    pred_test = esn.predict(x_test, continuation=False)
+    test_acc = accuracy(pred_test, y_test)
+    print(f"Final Testing accuracy: {100*test_acc:.2f}%")
+    esn.save("saved_data/final_esn_trained_with_nes.pickle")
+
+        
 if __name__ == "__main__":
-    test1()
+    test1_one_output()
 

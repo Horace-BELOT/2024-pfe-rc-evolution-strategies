@@ -5,3 +5,4 @@ numpy
 tqdm
 scikit-optimize
 matplotlib
+pickle
