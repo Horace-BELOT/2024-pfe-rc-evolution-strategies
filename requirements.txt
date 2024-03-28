@@ -6,3 +6,4 @@ tqdm
 scikit-optimize
 matplotlib
 pickle
+umap-learn
