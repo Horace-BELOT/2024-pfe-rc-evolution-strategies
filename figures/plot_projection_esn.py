@@ -21,7 +21,9 @@ from typing import List, Dict, Any, Optional
 
 from utils import accuracy, MnistDataloader
 from pyESN import ESN
-
+from sklearn.decomposition import PCA
+import umap
+import numpy as np
 
 INPUT_PATH = 'data'
 TRAINING_IMAGES_FILEPATH = os.path.join(INPUT_PATH, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
@@ -59,24 +61,53 @@ def main(
                                         TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
     
     proj_dimensions: List[int] = [
-        *range(20, 50, 5),
+        1,2,3,4,
+        *range(5, 50, 5),
         *range(50, 100, 10),
         *range(100, 151, 25),
-        #*range(200, 300, 50),
-        #*range(300, 501, 100),
+        *range(200, 300, 50),
+        *range(300, 501, 100),
         #600, 700, 784, 912
     ]
     print(proj_dimensions)
     result_records: List[Dict[str, Any]] = []
     for input_dim in tqdm.tqdm(proj_dimensions):
-        (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
-            normalize=True, 
-            # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
-            # out_format="column",
-            hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": False},
-            projection=input_dim,
-            silent=True,
-        )
+        x_train, y_train, x_test, y_test = None, None, None, None
+        if tag == "hog":
+            (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+                normalize=True, 
+                # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
+                # out_format="column",
+                hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": False},
+                projection=100,
+                silent=True,
+            )
+        elif tag == "normal":
+            (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+                normalize=True, 
+                projection=input_dim,
+                silent=True,
+            )
+        else:
+            (x_train, y_train), (x_test, y_test) = mnist_dataloader.prepare_data(
+                normalize=True, 
+                silent=True,
+            )
+        # do a PCA projection on the data
+        if tag == "pca":
+            pca = PCA(n_components=input_dim)
+            x_train = pca.fit_transform(x_train)
+            x_test = pca.transform(x_test)
+        
+        # do a UMAP
+        if tag == "umap":
+            reducer = umap.UMAP(n_components=input_dim)
+            x_train = reducer.fit_transform(x_train)
+            x_test = reducer.transform(x_test)
+        
+        # display the explained variance ratio with the number of components
+        # print("Explained Variance Ratio of the components", np.sum(pca.explained_variance_ratio_))
+        
         t_start: float = time.time()
         esn = ESN(
             n_inputs=input_dim,
@@ -123,6 +154,8 @@ def main(
 
 if __name__ == "__main__":
     # main(tag="normal")
-    # main(tag="hog")  # you need to uncomment the hog part as well
+    # main(tag="hog")
+    # main(tag="pca")
+    # main(tag="umap")
     df = pd.read_csv("figures/plot_projection_df.csv", sep=";")
     plot_data(df, save_path="figures/plot_projection_graph.png")
