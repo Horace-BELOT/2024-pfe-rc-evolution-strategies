@@ -12,6 +12,9 @@ from pyESN import ESN
 from utils import split_set, MnistDataloader, accuracy, pinv, save_pickle, load_pickle
 import umap
 import numpy as np
+from typing import List, Dict, Any, Optional
+import pandas as pd
+import matplotlib.pyplot as plt
 
 def load_mnist():
     """Loads the MNIST dataset"""
@@ -31,7 +34,7 @@ def mnist_reduced(input_dim=4):
     x_test = reducer.transform(x_test)
     return (x_train, y_train), (x_test, y_test)
 
-def train_esn(input_size,reservoir_size=50):
+def train_esn(input_size,reservoir_size=50,df_path: str = "CMAES/display_evolution.csv",):
     (x_train, y_train), (x_test, y_test) = mnist_reduced(input_size)
     esn = ESN(
         n_inputs=input_size,
@@ -53,6 +56,7 @@ def train_esn(input_size,reservoir_size=50):
     optimizer = CMA(mean=np.zeros(esn.W_in.shape[0]*esn.W_in.shape[1]), sigma=1, bounds=bounds, population_size=50)
     best_sol = None
     best_error = np.inf
+    result_records: List[Dict[str, Any]] = []
     try:
         for generation in range(100):
             solutions = []
@@ -69,6 +73,20 @@ def train_esn(input_size,reservoir_size=50):
                     best_sol = esn.W_in
                 print(error)
                 solutions.append((esn_result, error))
+                result_records.append({
+                    "generation": generation,
+                    "individual": i,
+                    "train_accuracy": train_acc,
+                    "test_accuracy": test_acc,
+                })
+                # Saving data by concatenating with what we already have and keeping the latest
+                df = pd.read_csv(df_path, sep=";")
+                df2: pd.DataFrame = pd.DataFrame.from_records(result_records)
+                df = pd.concat([df, df2])
+                df.sort_values(by=["test_accuracy"], ascending=True, inplace=True)
+                df.drop_duplicates(subset=["generation", "individual"], keep="last", inplace=True)
+                df.sort_values(by=["generation", "individual"], inplace=True)
+                df.to_csv(df_path, index=False, sep=";")
             print("Generation: ", generation, "Best error: ", np.min([x[1] for x in solutions]))
             optimizer.tell(solutions)
     except KeyboardInterrupt:
@@ -76,5 +94,12 @@ def train_esn(input_size,reservoir_size=50):
     esn.W_in = best_sol
     print("After all the generations, the best error is: ", best_error)
 
+def visualize():
+    df = pd.read_csv("CMAES/display_evolution.csv", sep=";")
+    df = df.groupby("generation").mean()
+    df.plot(y="test_accuracy")
+    plt.show()
+
 if __name__ == "__main__":
     train_esn(4, 50)
+    # visualize()
