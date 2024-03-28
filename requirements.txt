@@ -5,6 +5,5 @@ numpy
 tqdm
 scikit-optimize
 matplotlib
-pickle
 umap-learn
 cmaes
