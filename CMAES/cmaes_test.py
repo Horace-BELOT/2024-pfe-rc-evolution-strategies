@@ -13,7 +13,6 @@ from utils import split_set, MnistDataloader, accuracy, pinv, save_pickle, load_
 import umap
 import numpy as np
 
-
 def load_mnist():
     """Loads the MNIST dataset"""
     input_path = 'data'
