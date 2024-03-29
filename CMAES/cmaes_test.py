@@ -62,7 +62,8 @@ def train_esn_input(input_size,reservoir_size=50,df_path: str = "CMAES/display_e
             for i in range(optimizer.population_size):
                 esn_result = optimizer.ask()
                 esn.W_in = esn_result.reshape(esn.W_in.shape)
-                pred_train = esn.fit(x_train, y_train)
+                _ = esn.fit(x_train, y_train)
+                pred_train = esn.predict(x_train, continuation=True)
                 pred_test = esn.predict(x_test, continuation=False)
                 train_acc = accuracy(pred_train, y_train)
                 test_acc = accuracy(pred_test, y_test)
@@ -146,9 +147,9 @@ def train_all_esn(input_size,reservoir_size=50,df_path: str = "CMAES/display_evo
 def visualize():
     df = pd.read_csv("CMAES/display_evolution.csv", sep=";")
     df = df.groupby("generation").mean()
-    df.plot(y="test_accuracy")
+    df.plot(y=["train_accuracy", "test_accuracy"])
     plt.show()
 
 if __name__ == "__main__":
-    train_all_esn(10, 50)
-    # visualize()
+    # train_all_esn(10, 50)
+    visualize()
