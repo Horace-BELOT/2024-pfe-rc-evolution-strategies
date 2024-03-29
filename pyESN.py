@@ -33,7 +33,7 @@ class ESN:
                  learn_method: Learning_Method = "pinv", 
                  custom_method: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
                  ridge_noise: Optional[float] = None, learning_rate: float = 0,
-                 input_to_output_ratio: int = 1,
+                 input_to_output_ratio: int = 1, allow_cut_connections: bool = False
                  ):
         """
         Args:
@@ -52,6 +52,7 @@ class ESN:
             input_to_output_ratio: for MNIST, handles the case where you feed col by col
                 instead of the entire image. The integer counts how many entries match 1 output.
                 By default, there is 1 input per output
+            allow_cut_connections: whether or not to allow the reservoir to have connections from input to output
         
         [Scaling]
             input_scaling: factor that input weights array W_in will be multiplied by
@@ -84,6 +85,7 @@ class ESN:
         self.input_scaling: float = input_scaling
         self.feedback_scaling: float = feedback_scaling
         self.input_to_output_ratio: int = input_to_output_ratio
+        self.allow_cut_connections: bool = allow_cut_connections
 
         # Model
         self.learn_method: Learning_Method = learn_method
@@ -216,7 +218,10 @@ class ESN:
         self.W_fb *= self.feedback_scaling
 
         ## Initialize the output layer
-        self.W_out = np.zeros(shape=(self.n_outputs, (self.n_inputs + self.n_reservoir)))
+        if self.allow_cut_connections:
+            self.W_out = np.zeros(shape=(self.n_outputs, (self.n_inputs + self.n_reservoir)))
+        else:
+            self.W_out = np.zeros(shape=(self.n_outputs, self.n_reservoir))
 
     def _update(self, state: np.ndarray, input: np.ndarray, output: np.ndarray) -> np.ndarray:
         """
@@ -296,15 +301,24 @@ class ESN:
                 # If no output array was given, then we build the output array on the fly
                 # This is necessary as the feedback loop needs the output for time-dependant
                 # problems
-                outputs[k + 1, :] = self.out_activ(np.dot(
+                
+                if self.allow_cut_connections:
+                    outputs[k + 1, :] = self.out_activ(np.dot(
                     self.W_out, np.concatenate([states[k + 1, :], inputs[k + 1, :]])))
+                else:
+                    outputs[k + 1, :] = self.out_activ(np.dot(self.W_out, states[k + 1, :]))
+                
 
             # Keeping track of max coeff to be sure that no divergence occurs
             # max_res: float = np.abs(self.states[k, :]).max()
             # progress_bar.set_description(f"Step {k}/{n}. Max in reservoir = {max_res:.2f}")
                 
         self.states = states
-        x: np.ndarray = np.hstack([self.states, inputs])  # inputs of training is states + inputs
+        x: np.ndarray = None
+        if self.allow_cut_connections:
+            x: np.ndarray = np.hstack([self.states, inputs])  # inputs of training is states + inputs
+        else:
+            x: np.ndarray = self.states
         self.extended_states = x
         if not build_outputs:
             # If outputs were not built on the go => we build them at the end

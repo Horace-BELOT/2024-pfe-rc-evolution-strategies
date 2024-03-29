@@ -101,7 +101,8 @@ def train_all_esn(input_size,reservoir_size=50,df_path: str = "CMAES/display_evo
         feedback_scaling=0.2,
         wash_out=25,
         learn_method="pinv",
-        random_state=12
+        random_state=12,
+        allow_cut_connections=False
     )
     
     upper_bound = np.ones(esn.W_in.shape[0]*esn.W_in.shape[1]+esn.W_out.shape[0]*esn.W_out.shape[1])
@@ -151,5 +152,5 @@ def visualize():
     plt.show()
 
 if __name__ == "__main__":
-    # train_all_esn(10, 50)
-    visualize()
+    train_all_esn(10, 50)
+    # visualize()
