@@ -53,12 +53,11 @@ def train_esn_input(input_size,reservoir_size=50,df_path: str = "CMAES/display_e
     upper_bound = np.ones(esn.W_in.shape[0]*esn.W_in.shape[1])
     lower_bound = -np.ones(esn.W_in.shape[0]*esn.W_in.shape[1])
     bounds = np.stack((lower_bound, upper_bound), axis=1)
-    optimizer = CMA(mean=np.zeros(esn.W_in.shape[0]*esn.W_in.shape[1]), sigma=1, bounds=bounds, population_size=50)
+    optimizer = CMA(mean=np.zeros(esn.W_in.shape[0]*esn.W_in.shape[1]), sigma=1, bounds=bounds, population_size=200)
     best_sol = None
     best_error = np.inf
-    result_records: List[Dict[str, Any]] = []
     try:
-        for generation in range(100):
+        for generation in range(500):
             solutions = []
             for i in range(optimizer.population_size):
                 esn_result = optimizer.ask()
@@ -73,20 +72,14 @@ def train_esn_input(input_size,reservoir_size=50,df_path: str = "CMAES/display_e
                     best_sol = esn.W_in
                 print(error)
                 solutions.append((esn_result, error))
-                result_records.append({
+                data_for_csv = {
                     "generation": generation,
                     "individual": i,
                     "train_accuracy": train_acc,
                     "test_accuracy": test_acc,
-                })
-                # Saving data by concatenating with what we already have and keeping the latest
-                df = pd.read_csv(df_path, sep=";")
-                df2: pd.DataFrame = pd.DataFrame.from_records(result_records)
-                df = pd.concat([df, df2])
-                df.sort_values(by=["test_accuracy"], ascending=True, inplace=True)
-                df.drop_duplicates(subset=["generation", "individual"], keep="last", inplace=True)
-                df.sort_values(by=["generation", "individual"], inplace=True)
-                df.to_csv(df_path, index=False, sep=";")
+                }
+                df = pd.DataFrame(data_for_csv, index=[0])
+                df.to_csv(df_path, mode="a", header=False, sep=";", index=False)          
             print("Generation: ", generation, "Best error: ", np.min([x[1] for x in solutions]))
             optimizer.tell(solutions)
     except KeyboardInterrupt:
@@ -116,7 +109,6 @@ def train_all_esn(input_size,reservoir_size=50,df_path: str = "CMAES/display_evo
     optimizer = CMA(mean=np.zeros(esn.W_in.shape[0]*esn.W_in.shape[1] + esn.W_out.shape[0]*esn.W_out.shape[1]), sigma=1, bounds=bounds, population_size=50)
     best_sol = None
     best_error = np.inf
-    result_records: List[Dict[str, Any]] = []
     try:
         for generation in range(100):
             solutions = []
@@ -134,20 +126,15 @@ def train_all_esn(input_size,reservoir_size=50,df_path: str = "CMAES/display_evo
                     best_sol = esn.W_in
                 print(error)
                 solutions.append((esn_result, error))
-                result_records.append({
+                data_for_csv = {
                     "generation": generation,
                     "individual": i,
                     "train_accuracy": train_acc,
                     "test_accuracy": test_acc,
-                })
+                }
                 # Saving data by concatenating with what we already have and keeping the latest
-                df = pd.read_csv(df_path, sep=";")
-                df2: pd.DataFrame = pd.DataFrame.from_records(result_records)
-                df = pd.concat([df, df2])
-                df.sort_values(by=["test_accuracy"], ascending=True, inplace=True)
-                df.drop_duplicates(subset=["generation", "individual"], keep="last", inplace=True)
-                df.sort_values(by=["generation", "individual"], inplace=True)
-                df.to_csv(df_path, index=False, sep=";")
+                df = pd.DataFrame(data_for_csv, index=[0])
+                df.to_csv(df_path, mode="a", header=False, sep=";", index=False)       
             print("Generation: ", generation, "Best error: ", np.min([x[1] for x in solutions]))
             optimizer.tell(solutions)
     except KeyboardInterrupt:
