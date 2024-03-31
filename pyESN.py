@@ -18,6 +18,12 @@ from utils import *
 from RLS import RLS
 from typing import Callable, Literal, Optional, Union, List, Tuple
 
+import torch
+from torch import nn
+from torch.nn import functional as F
+from copy import deepcopy
+
+
 Learning_Method = Literal["pinv", "pinv_ridge", "sgd", "sgd_ridge", "custom"]
 
 class ESN:
@@ -421,3 +427,263 @@ class ESN:
         t: int = self.input_to_output_ratio
         return y[(t-1)::t]
         # return self.out_activ(outputs[1:])
+
+# Now the implementation in pytorch
+
+class ESN_State_Layer(nn.Module):
+    
+    def __init__(self,n_reservoir: int = 50,
+                 spectral_radius: float = 0.95, sparsity: float = 0,
+                 leaky_rate: float = 0, noise: float = 0.0, 
+                 state_activ_fx: Callable[[np.ndarray], np.ndarray] = torch.tanh,
+                 device: str = "cpu"
+                 ):
+        """
+        Args:
+        [Network's parameter]
+            n_reservoir: number of reservoir neurons
+            spectral_radius: spectral radius of connectivity matrix of the reservoir
+            sparsity: proportion of recurrent weights set to zero in the reservoir
+            noise: noise added to each neuron when updating (regularization)
+            state_activ_fx: activation function used in updating reservoir states
+            leaky_rate: leaky rate of Leaky-Integrator ESN (LIESN), used to improve STM
+            device: device on which the model will be run
+        """
+        super().__init__()
+        self.n_reservoir: int = n_reservoir
+        self.spectral_radius: float = spectral_radius
+        self.sparsity: float = sparsity
+        self.leaky_rate: float = leaky_rate
+        self.noise: float = noise
+        self.state_activ_fx: Callable[[np.ndarray], np.ndarray] = state_activ_fx
+        self.device: str = device
+        self.W: nn.Parameter
+        self.initialize_weights()
+    
+    def initialize_weights(self):
+        """
+        Initializes the weights of the reservoir
+        """
+        ## Builds the reservoir matrix
+        # Initiate the connectivity matrix with a uniform law in [-0.5, 0.5]
+        self.W = torch.rand(self.n_reservoir, self.n_reservoir, requires_grad=False, device=self.device) - 0.5
+        # We force the sparsity of the matrix to the given value
+        self.W[torch.rand(self.n_reservoir, self.n_reservoir, device=self.device) < self.sparsity] = 0
+        # We then force the spectral radius to the given value
+        radius_w: float = torch.max(torch.abs(torch.linalg.eigvals(self.W)))
+        self.W = self.W * (self.spectral_radius / radius_w)
+        
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            state: torch.Tensor of current reservoir state (length of array is n_reservoir)
+        Returns:
+            the reservoir updated state after being fed the given inputs
+        """
+        preactivation: torch.Tensor = torch.matmul(self.W, state)
+        # We are going to use a normal white noise matrix
+        noise_matrix: torch.Tensor = torch.normal(mean=0, std=self.noise, size=(self.n_reservoir,), requires_grad=False, device=self.device)
+        return self.leaky_rate * state + noise_matrix + self.state_activ_fx(preactivation)
+
+class Torch_ESN(nn.Module):
+        
+    def __init__(self, n_inputs: int, n_outputs: int, n_reservoir: int = 50,
+                spectral_radius: float = 0.95, sparsity: float = 0,
+                leaky_rate: float = 0, noise: float = 0.0, 
+                state_activ_fx: Callable[[np.ndarray], np.ndarray] = torch.tanh, 
+                out_activ: Callable[[np.ndarray], np.ndarray] = torch.nn.Identity(),
+                out_activ_inv: Callable[[np.ndarray], np.ndarray] = identity,
+                input_scaling: float = 1, feedback_scaling: float = 0.0,
+                seed: int = None, wash_out: int = 1, silent: bool = True,
+                learning_rate: float = 0.001, nb_epochs: int = 5,
+                batch_size: int = 32,
+                input_to_output_ratio: int = 1, allow_cut_connections: bool = False,
+                device: str = "cpu"
+                ):
+        """
+        Args:
+        [Network's parameter]
+            n_inputs: input dimensions
+            n_outputs: output dimensions
+            n_reservoir: number of reservoir neurons
+            spectral_radius: spectral radius of connectivity matrix of the reservoir
+            sparsity: proportion of recurrent weights set to zero in the reservoir
+            noise: noise added to each neuron when updating (regularization)
+            wash_out: number of states that we will discard at the start of the output
+            state_activ_fx: activation function used in updating reservoir states
+            out_activ: output activation function (often identity or softmax)
+            out_activ_inv: inverse of the output activation function
+            leaky_rate: leaky rate of Leaky-Integrator ESN (LIESN), used to improve STM
+            input_to_output_ratio: for MNIST, handles the case where you feed col by col
+                instead of the entire image. The integer counts how many entries match 1 output.
+                By default, there is 1 input per output
+            allow_cut_connections: whether or not to allow the reservoir to have connections from input to output
+        
+        [Scaling]
+            input_scaling: factor that input weights array W_in will be multiplied by
+            feedback_scaling: factor that output weights array W_fb will be multiplied by
+
+
+        [Training]
+            learning_rate: learning rate used for ADAM
+            nb_epochs: number of epochs for training
+            batch_size: size of the batch for training
+            
+        [Misc]
+            silent: whether or not to print updates on execution
+            seed: seed for reservoir, input layer and feedback layer initialization
+            device: device on which the model will be run
+            
+        """
+        super().__init__()
+        # Constants / network characteristics
+        self.n_inputs: int = n_inputs
+        self.n_outputs: int = n_outputs
+        self.n_reservoir: int = n_reservoir
+        self.spectral_radius: float = spectral_radius
+        self.sparsity: float = sparsity
+        self.leaky_rate: float = leaky_rate
+        self.noise: float = noise
+        self.state_activ_fx: Callable[[np.ndarray], np.ndarray] = state_activ_fx
+        self.out_activ: Callable[[np.ndarray], np.ndarray] = out_activ
+        self.out_activ_inv: Callable[[np.ndarray], np.ndarray] = out_activ_inv
+        self.wash_out: int = wash_out
+        self.input_scaling: float = input_scaling
+        self.feedback_scaling: float = feedback_scaling
+        self.input_to_output_ratio: int = input_to_output_ratio
+        self.allow_cut_connections: bool = allow_cut_connections
+        
+        # Model
+        self.learning_rate: float = learning_rate
+        self.nb_epochs: int = nb_epochs
+        self.batch_size: int = batch_size
+        
+        # Misc
+        self.silent: bool = silent
+        self.seed = seed
+        torch.manual_seed(seed)
+        self.device = device
+        
+        
+        self.layer_out: nn.Linear = nn.Linear(n_reservoir, n_outputs, bias=False)
+        
+        with torch.no_grad():
+            self.state_layer = ESN_State_Layer(n_reservoir=n_reservoir, spectral_radius=spectral_radius,
+                                            sparsity=sparsity, leaky_rate=leaky_rate, noise=noise,
+                                            state_activ_fx=state_activ_fx, device=self.device)
+            print(n_inputs, n_reservoir, n_outputs)
+            self.layer_in: nn.Linear = nn.Linear(n_inputs, n_reservoir, bias=False)
+            self.layer_in.requires_grad_(False)
+            print(self.layer_in.weight.shape)
+            self.feedback_layer: nn.Linear = nn.Linear(n_outputs, n_reservoir, bias=False)
+            self.feedback_layer.requires_grad_(False)
+            self.cut_connections: nn.Linear = nn.Linear(n_inputs, n_outputs, bias=False)
+            self.cut_connections.requires_grad_(False)
+        
+        #self.initialize_weights()
+    
+    def initialize_weights(self):
+        """
+        Initializes the weights of the reservoir
+        """
+        self.layer_in.weight.data.uniform_(-1, 1)
+        self.layer_out.weight.data.uniform_(-1, 1)
+        self.feedback_layer.weight.data.zero_()
+        self.cut_connections.weight.data.zero_()
+    
+    def forward(self, inputs: torch.Tensor, outputs: Optional[torch.Tensor] = None, state: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Feeds inputs and outputs (through feedback loop) into the reservoir.
+        
+        Args:
+            inputs: torch.Tensor of inputs of shape (N x n_inputs)
+            outputs: Optional[torch.Tensor] of outputs of shape (N x n_outputs).
+                If None: initialized as zeros
+        Returns:
+            output array of the network
+        """
+        n: int = inputs.shape[0]
+        
+        if outputs is None:
+            outputs = torch.zeros(n, self.n_outputs, device=self.device)
+        else:
+            if outputs.shape[0] != n:
+                raise ValueError(f"Inputs and Outputs have different shapes ({outputs.shape[0]} != {inputs.shape[0]})")
+        
+        if state is None:
+            state = torch.zeros(self.n_reservoir, device=self.device)
+        else:
+            if state.shape[0] != self.n_reservoir:
+                raise ValueError(f"State is of wrong shape: {state.shape} instead of ({self.n_reservoir},)")
+            state = state.clone()
+            
+        
+        
+        outputs = outputs.clone()
+        
+        for k in range(n - 1):
+            inp =  self.layer_in(inputs[k + 1, :])
+            feed = self.feedback_layer(outputs[k, :])
+            st = self.state_layer(state)
+            next_state = st + inp + feed
+            if self.allow_cut_connections:
+                next_output = self.out_activ(self.layer_out(next_state)) + self.cut_connections(inputs[k + 1, :])
+            else:
+                next_output = self.out_activ(self.layer_out(next_state))
+            state = next_state.detach().clone()
+            outputs = torch.cat((outputs[:k+1], next_output.unsqueeze(0)))
+        
+        t: int = self.input_to_output_ratio
+        return outputs[(t - 1)::t, :], state
+    
+    # fit the layer_out with SGD
+    def fit(self, inputs: torch.Tensor, outputs: torch.Tensor, state: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Feeds all the inputs to the network and harvests the resulting states.
+        Then trains the model using the chosen method and fitting the output on the target.
+        Finally, returns the prediction post-training of the ESN model on the train set.
+
+        Args:
+            inputs: torch.Tensor of inputs of shape (N x n_inputs)
+            outputs: torch.Tensor of outputs of shape (N x n_outputs)
+        Returns:
+            torch.Tensor representing the prediction of the model on the trainset (N x n_outputs)
+        """
+        
+        ### Training output matrix (readout layer)
+        if not self.silent: print("[INFO] Training Readout Layer...")
+        optimizer = torch.optim.Adam(self.layer_out.parameters(), lr=self.learning_rate)
+        criterion = nn.CrossEntropyLoss()
+        
+        # detect gradient anomaly
+        torch.autograd.set_detect_anomaly(True)
+        if state is None:
+            state = torch.zeros(self.n_reservoir, device=self.device)
+        else:
+            if state.shape[0] != self.n_reservoir:
+                raise ValueError(f"State is of wrong shape: {state.shape} instead of ({self.n_reservoir},)")
+            state = state.clone()
+        
+        for epoch in range(self.nb_epochs):
+            _ = self.forward(inputs[:self.wash_out, :], outputs[:self.wash_out, :])
+            nb_batch = (inputs.shape[0]-self.wash_out) // self.batch_size
+            accuracies = []
+            for i in range(nb_batch):
+                optimizer.zero_grad()
+                inputs_batch = inputs[self.wash_out + i*self.batch_size:self.wash_out + (i+1)*self.batch_size, :]
+                outputs_batch = outputs[self.wash_out + i*self.batch_size:self.wash_out + (i+1)*self.batch_size, :]
+                pred,state = self.forward(inputs_batch, outputs_batch, state)
+                loss = criterion(pred, outputs_batch)
+                accuracy = (pred.argmax(dim=1) == outputs_batch.argmax(dim=1)).float().mean()
+                accuracies.append(accuracy.item())
+                loss.backward(retain_graph=True)
+                optimizer.step()
+                if i % 100 == 0:
+                    print(f"Epoch {epoch} - Batch {i} - Loss: {loss.item()} - Accuracy: {np.mean(accuracies)}")
+            
+            print(f"Epoch {epoch} - Loss: {loss.item()} - Accuracy: {np.mean(accuracies)}")
+        
+        return pred, state
+    
+    def set_W_in(self, W_in: torch.Tensor):
+        self.layer_in.weight.data = W_in
