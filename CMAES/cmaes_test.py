@@ -217,5 +217,5 @@ def visualize():
     plt.show()
 
 if __name__ == "__main__":
-    train_esn_input(10, 50)
+    train_esn_input_torch(10, 50)
     #visualize()
