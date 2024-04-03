@@ -324,6 +324,11 @@ def plot_results_parallel_run(
     
 
 def parallel_run_mnist():
+    """
+    Trains ESN's output layer on MNIST by splitting the 10 classes of the MNIST dataset (10 classes)
+    and training the 10 parts of the output layer separetely on different cores using Natural Evolution
+    Strategies.
+    """
     # Loads MNIST data
     mnist_dataloader = MnistDataloader(
         TRAINING_IMAGES_FILEPATH, TRAINING_LABELS_FILEPATH, 
@@ -400,11 +405,17 @@ def parallel_run_mnist():
     df = pd.concat([results[i]["df"] for i in range(10)])
     df.to_csv("saved_data/loss_data_df.csv", sep=";", index=True)
 
-        
-if __name__ == "__main__":
+
+def main():
     # test1_one_output()
     # parallel_run_mnist()
+    
+    # Parallel run = NES training output layer 
     plot_results_parallel_run(
         df="saved_data/loss_data_df.csv",
         save_path="saved_data/train_graph.png"
     )
+
+
+if __name__ == "__main__":
+    main()

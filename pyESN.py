@@ -172,6 +172,24 @@ class ESN:
         with open(file_path, "wb") as handle:
             pickle.dump(self.to_dict(), handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+    def from_dict(data: Dict[Any, Any]) -> "ESN":
+        """"""
+        esn = ESN(**data["args"])
+        if data["objects"].get("random_state_") is not None:
+            esn.random_state_ = data["objects"].get("random_state_")
+        if data["objects"].get("W") is not None:
+            esn.W = data["objects"].get("W")
+        if data["objects"].get("W_in") is not None:
+            esn.W_in = data["objects"].get("W_in")
+        if data["objects"].get("W_out") is not None:
+            esn.W_out = data["objects"].get("W_out")
+        if data["objects"].get("W_fb") is not None:
+            esn.W_fb = data["objects"].get("W_fb")
+        if data["objects"].get("states") is not None:
+            esn.states = data["objects"].get("states")
+        if data["objects"].get("extended_states") is not None:
+            esn.extended_states = data["objects"].get("extended_states")
+
     def load(file_path: str) -> "ESN":
         """
         Loads an ESN object from 
@@ -179,23 +197,14 @@ class ESN:
         with open(file_path, "rb") as handle:
             loaded_data: Dict[str, Any] = pickle.load(handle)
 
-        esn = ESN(**loaded_data["args"])
-        if loaded_data["objects"].get("random_state_") is not None:
-            esn.random_state_ = loaded_data["objects"].get("random_state_")
-        if loaded_data["objects"].get("W") is not None:
-            esn.W = loaded_data["objects"].get("W")
-        if loaded_data["objects"].get("W_in") is not None:
-            esn.W_in = loaded_data["objects"].get("W_in")
-        if loaded_data["objects"].get("W_out") is not None:
-            esn.W_out = loaded_data["objects"].get("W_out")
-        if loaded_data["objects"].get("W_fb") is not None:
-            esn.W_fb = loaded_data["objects"].get("W_fb")
-        if loaded_data["objects"].get("states") is not None:
-            esn.states = loaded_data["objects"].get("states")
-        if loaded_data["objects"].get("extended_states") is not None:
-            esn.extended_states = loaded_data["objects"].get("extended_states")
-        return esn
+        return ESN.from_dict(loaded_data)
         
+    def copy():
+        """
+        Create an identical ESN object with deep copies
+        """
+        raise NotImplementedError
+
 
     def build_matrixes(self):
         """
