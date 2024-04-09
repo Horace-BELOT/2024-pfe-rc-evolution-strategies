@@ -15,6 +15,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import pandas as pd
 from math import sqrt
+from utils import save_pickle, load_pickle
 
 
 class NES:
@@ -106,7 +107,10 @@ class NES:
                     self.w[i,j] = self.w[i,j] + value
         else:
             raise ValueError(f"Weird matrix shape: {self.w.shape}")
-        return self.f(self.w)
+        loss_value, bonus_data = self.f(self.w, saving=True)
+        for k, v in bonus_data.items():
+            self.data.loc[self.data.index.max(), k] = v
+        return loss_value
             
 
     def optimize(
@@ -114,6 +118,7 @@ class NES:
             n_iter: int = 100, 
             silent: bool = False,
             graph: bool = False,
+            save_path: Optional[str] = None,
             ) -> np.ndarray:
         """
         Runs n_iter steps of the NES algorithm
@@ -125,6 +130,9 @@ class NES:
                 Whether to print results or not
             graph: bool
                 Whether to show a graph of loss / learning rate / noise
+            save_path: Optional[str]
+                If prvovided, at each step the dataframe of results will be saved as a dict
+                such that {"data": self.data, "w": self.w} at path f"{save_path}.pickle"
 
         Returns:
             1D np.ndarray of the training loss at the end of each generation
@@ -140,6 +148,10 @@ class NES:
             self.data.loc[n, "alpha"] = self.alpha
             self.data.loc[n, "train_loss"] = self.step()
             self.data.loc[:, "score"] = (self.data["train_loss"].diff() > 0).rolling(window_size).sum() / window_size
+            if save_path is not None:
+                if ".pickle" not in save_path:
+                    save_path += ".pickle" 
+                save_pickle({"data": self.data, "w": self.w}, file_path=save_path)
             # self.data.loc[:, "score"] = self.data["train_loss"].rolling(5).mean().diff(1).dropna() / self.data.loc[5:, "alpha"]
             if self.adaptive_rate:
 

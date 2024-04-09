@@ -189,6 +189,7 @@ class ESN:
             esn.states = data["objects"].get("states")
         if data["objects"].get("extended_states") is not None:
             esn.extended_states = data["objects"].get("extended_states")
+        return esn
 
     def load(file_path: str) -> "ESN":
         """
