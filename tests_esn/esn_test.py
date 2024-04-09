@@ -178,7 +178,9 @@ class ESNtest:
             leaky_rate=0.7,
             wash_out=25,
             learn_method="pinv",
-            learning_rate=0.00001
+            learning_rate=0.00001,
+            allow_cut_connections=True,
+            repeated_inputs=5,
         )
         pred_train = esn.fit(x_train, y_train)
         pred_test = esn.predict(x_test, continuation=False)

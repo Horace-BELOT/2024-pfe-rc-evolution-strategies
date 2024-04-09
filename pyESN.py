@@ -39,7 +39,8 @@ class ESN:
                  learn_method: Learning_Method = "pinv", 
                  custom_method: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
                  ridge_noise: Optional[float] = None, learning_rate: float = 0,
-                 input_to_output_ratio: int = 1, allow_cut_connections: bool = False
+                 input_to_output_ratio: int = 1, allow_cut_connections: bool = False,
+                 repeated_inputs: Optional[int] = None,
                  ):
         """
         Args:
@@ -59,6 +60,7 @@ class ESN:
                 instead of the entire image. The integer counts how many entries match 1 output.
                 By default, there is 1 input per output
             allow_cut_connections: whether or not to allow the reservoir to have connections from input to output
+            repeated_inputs: how many times every input is passed in succession
         
         [Scaling]
             input_scaling: factor that input weights array W_in will be multiplied by
@@ -92,6 +94,7 @@ class ESN:
         self.feedback_scaling: float = feedback_scaling
         self.input_to_output_ratio: int = input_to_output_ratio
         self.allow_cut_connections: bool = allow_cut_connections
+        self.repeated_inputs: Optional[int] = repeated_inputs
 
         # Model
         self.learn_method: Learning_Method = learn_method
@@ -312,8 +315,13 @@ class ESN:
         progress_bar = tqdm.tqdm(range(n - 1), disable=self.silent)  # Progress bar
         for k in progress_bar:
             states[k + 1, :] = self._update(states[k], inputs[k + 1, :], outputs[k, :])
+            if self.repeated_inputs is not None:
+                # If asked for, each inputs will be fed multiple times to the network before
+                # the output is harvested
+                for _ in range(1, self.repeated_inputs):
+                    states[k + 1, :] = self._update(states[k + 1], inputs[k + 1, :], outputs[k, :])
 
-            if build_outputs:  
+            if build_outputs:   
                 # If no output array was given, then we build the output array on the fly
                 # This is necessary as the feedback loop needs the output for time-dependant
                 # problems
@@ -386,7 +394,7 @@ class ESN:
         if self.learn_method == "pinv":
             self.W_out = pinv(x, y)
         elif self.learn_method == "pinv_ridge":
-            self.W_out = ridge(x, y, self.ridge_noise)
+            self.W_out = pinv_ridge(x, y, self.ridge_noise)
         elif self.learn_method == "sgd":
             self.W_out = sgd(x, y, alpha=self.learning_rate, lambda_ridge=0, silent=self.silent)
         elif self.learn_method == "sgd_ridge":

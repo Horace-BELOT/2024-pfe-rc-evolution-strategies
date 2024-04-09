@@ -65,7 +65,7 @@ def quantize(data, num_bins):
 
 # %% Training Functions
 
-def ridge(X, Y, ridge_noise):
+def pinv_ridge(X, Y, ridge_noise):
     '''Compute readout weights matrix [Ridge Regression]
     Args:
         X : reservoir states matrix, (num_samples * N)
