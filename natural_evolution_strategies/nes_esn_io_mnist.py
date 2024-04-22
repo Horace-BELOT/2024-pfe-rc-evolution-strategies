@@ -4,6 +4,7 @@ This file contains scripts
 import sys
 import os
 import multiprocessing
+import time
 import numpy as np
 import pandas as pd
 
@@ -72,8 +73,9 @@ def create_reduced(input_dim: int = 4):
 def esn_mnist_umap_io(
         load_path_esn: str,
         load_path_nes: Optional[str],
-        input_dim: int = 4,
+        input_dim: int = 10,
         reservoir_size: int = 50,
+        pretrain_output_layer: bool = False
 ):
     """
     Reduces dimension of MNIST input data using UMAP reducer.
@@ -84,6 +86,9 @@ def esn_mnist_umap_io(
             Dimension of input data after UMAP reduction
         reservoir_size: int
             Number of neurons in the reservoir
+        pretrain_output_layer: bool
+            Whether to train the output layer on the data before starting
+            NES iterations
     """
     
     (x_train, y_train), (x_test, y_test) = create_reduced(input_dim)
@@ -109,6 +114,9 @@ def esn_mnist_umap_io(
         )
         esn.save(load_path_esn)
 
+    if pretrain_output_layer:
+        esn.fit(x_train, y_train)
+
 
     # We start from an array fitted on 100 samples
     def f_reward(w_temp: np.ndarray, saving: bool = False) -> float:
@@ -118,7 +126,10 @@ def esn_mnist_umap_io(
         loss = (-np.linalg.norm(pred_train - y_train) /
                  (y_train.shape[0] * y_train.shape[1]))
         if saving:
-            return loss, {"train_accuracy": accuracy(pred_train, y_train)}
+            train_accuracy = accuracy(pred_train, y_train)
+            pred_test = esn.predict(x_test, continuation=False)
+            test_accuracy = accuracy(pred_test, y_test)
+            return loss, {"train_accuracy": train_accuracy, "test_accuracy": test_accuracy}
         return loss
 
     # W_in = n_reservoir * n_inputs ==> we transpose
@@ -145,7 +156,7 @@ def esn_mnist_umap_io(
     except:
         print(f"Didn't find any NES data")
 
-    nes.optimize(n_iter=200, graph=False, silent=False, save_path=load_path_nes)
+    nes.optimize(n_iter=1000, graph=False, silent=False, save_path=load_path_nes)
 
     pred_train = esn.predict(x_train, continuation=False)
     pred_test = esn.predict(x_test, continuation=False)
@@ -240,12 +251,119 @@ def esn_mnist_umap_output_only(
     plt.savefig("saved_data/nes_mnist_ouput_only_4.png")
     plt.show()
 
-def baseline_pinv(
-    input_dim: int = 4,
-    reservoir_size: int = 50,
+
+def esn_mnist_umap_input_nes_output_pinv(
+        input_dim: int = 10,
+        reservoir_size: int = 50,
 ):
+    """
+    Trains input layer with NES and output layer with PINV
+    """
+    
     (x_train, y_train), (x_test, y_test) = create_reduced(input_dim)
-    print(f"Data is ready")
+    print(f"UMAP Data is ready")
+    load_path_esn = "saved_data/esn_mnist_umap_input_nes_output_pinv/esn.pickle"
+    try: 
+        esn = ESN.load(load_path_esn)
+        print(f"ESN data found at {load_path_esn}. Loading")
+    except:
+        esn = ESN(
+            n_inputs=input_dim,
+            n_outputs=10,
+            spectral_radius=0.8,
+            n_reservoir=reservoir_size,
+            sparsity=0.5,
+            silent=True,
+            input_scaling=0.7,
+            feedback_scaling=0.2,
+            wash_out=25,
+            learn_method="pinv",
+            random_state=12,
+            allow_cut_connections=False
+        )
+        esn.save(load_path_esn)
+
+
+    # We start from an array fitted on 100 samples
+    def f_reward(w_temp: np.ndarray, saving: bool = False) -> float:
+        esn.W_in = w_temp
+        pred_train = esn.fit(x_train, y_train)
+        loss = (-np.linalg.norm(pred_train - y_train) /
+                 (y_train.shape[0] * y_train.shape[1]))
+        if saving:
+            return loss, {"train_accuracy": accuracy(pred_train, y_train)}
+        return loss
+
+    # W_in = n_reservoir * n_inputs ==> we transpose
+    # W_out = n_outputs * n_reservoir
+    
+    w_nes = esn.W_in.copy()
+
+    nes = NES(
+        w=w_nes,
+        f=f_reward,
+        pop=20,
+        sigma=5 * 10 ** (-10),
+        alpha=0.01,
+        mirrored_sampling=False,
+    )
+    # We try and see if there has already been a running experiment that we can continue
+    load_path_nes = "saved_data/esn_mnist_umap_input_nes_output_pinv/nes.pickle"
+    try:
+        nes_data = load_pickle(load_path_nes)
+        print(f"Found NES data at {load_path_nes} with {len(nes_data['data'])} points. Loading")
+        print(nes_data.keys())
+        esn.W_in = nes_data["w"].copy()
+        NES.w = nes_data["w"]
+        nes.data = nes_data["data"]
+        nes.alpha = nes.data["alpha"].iloc[-1]
+        nes.sigma = nes.data["noise"].iloc[-1]
+    except:
+        print(f"Didn't find any NES data")
+
+    nes.optimize(n_iter=2000, graph=False, silent=False, save_path=load_path_nes)
+
+    pred_train = esn.predict(x_train, continuation=False)
+    pred_test = esn.predict(x_test, continuation=False)
+
+    train_acc = accuracy(pred_train, y_train)
+    test_acc = accuracy(pred_test, y_test)
+    print(f"Training accuracy: {100*train_acc:.2f}%")
+    print(f"Testing accuracy: {100*test_acc:.2f}%")
+    # plot_result()
+
+
+def plot_result(nes_path: str, graph_save_path: str):
+    nes_data = load_pickle(nes_path)
+    df: pd.DataFrame = nes_data["data"]
+    fig, ax1 = plt.subplots(1)
+    # Training loss
+    # ax1.plot(df.index, -df["train_loss"])
+    # ax1.set_yscale("log")
+
+    # Accuracy
+    ax1.plot(df.index, df["train_accuracy"])
+
+    if "test_accuracy" in df.columns:
+        ax1.plot(df.index, df["test_accuracy"])
+
+    ax1.set_xlabel("Generation")
+    plt.tight_layout()
+    plt.grid(True)
+    plt.savefig(graph_save_path)
+    plt.show()
+
+
+def mnist_esn_x_pinv(input_dim: int = 10, reservoir_size: int = 50):
+    """
+    This is the baseline: no NES training
+    - input layer isn't trained
+    - output layer trained with NES
+
+    The result for UMAP10 is 86.2% testing accuracy
+    """ 
+    (x_train, y_train), (x_test, y_test) = create_reduced(input_dim)
+    print(f"UMAP Data is ready")
 
     esn = ESN(
         n_inputs=input_dim,
@@ -255,49 +373,44 @@ def baseline_pinv(
         sparsity=0.5,
         silent=True,
         input_scaling=0.7,
-        feedback_scaling=0,
+        feedback_scaling=0.2,
         wash_out=25,
-        learn_method="pinv",
+        learn_method="pinv_ridge",
+        ridge_noise=1e-10,
         random_state=12,
         allow_cut_connections=False
     )
-    esn.fit(x_train, y_train)
 
-    pred_train = esn.predict(x_train, continuation=False)
+    t_start = time.time()
+
+    pred_train = esn.fit(x_train, y_train)
     pred_test = esn.predict(x_test, continuation=False)
 
     train_acc = accuracy(pred_train, y_train)
     test_acc = accuracy(pred_test, y_test)
+    print(f"Training and testing done in {(time.time() - t_start):.2f} sec")
     print(f"Training accuracy: {100*train_acc:.2f}%")
     print(f"Testing accuracy: {100*test_acc:.2f}%")
-
-    
-
-def plot_result():
-    load_path_nes = "saved_data/nes_mnist_io_nes_data.pickle"
-    nes_data = load_pickle(load_path_nes)
-    df = nes_data["data"]
-    fig, ax1 = plt.subplots(1)
-    # Training loss
-    # ax1.plot(df.index, -df["train_loss"])
-    # ax1.set_yscale("log")
-
-    # Accuracy
-    ax1.plot(df.index, df["train_accuracy"])
-    ax1.set_xlabel("Generation")
-
-    plt.tight_layout()
-    plt.grid(True)
-    plt.savefig("saved_data/nes_mnist_io_4.png")
-    plt.show()
+    # plot_result()
 
 
 def main():
     # baseline_pinv()
-    # plot_result()
-    # esn_mnist_umap_io(load_path_esn="saved_data/nes_mnist_io_esn_data.pickle",
-    #                   load_path_nes="saved_data/nes_mnist_io_nes_data.pickle")
-    esn_mnist_umap_output_only()
+    
+    # esn_mnist_umap_io(load_path_esn="saved_data/esn_mnist_umap_io/esn.pickle",
+    #                   load_path_nes="saved_data/esn_mnist_umap_io/nes.pickle",
+    #                   pretrain_output_layer=False)
+    plot_result(nes_path="saved_data/esn_mnist_umap_io/nes.pickle",
+                graph_save_path="figures/presentation_reiteration/esn_umap10_input_output_nes.png")    
+    
+    # esn_mnist_umap_io(load_path_esn="saved_data/esn_mnist_umap_io_pretrain_out/esn.pickle",
+    #                   load_path_nes="saved_data/esn_mnist_umap_io_pretrain_out/nes.pickle",
+    #                   pretrain_output_layer=True)
+    # plot_result(nes_path="saved_data/esn_mnist_umap_io_pretrain_out/nes.pickle",
+    #             graph_save_path="figures/presentation_reiteration/nes_umap10_input_output_pretrained_and_nes.png")
+    
+    # esn_mnist_umap_input_nes_output_pinv()
+    # mnist_esn_x_pinv()
 
 
 if __name__ == "__main__":

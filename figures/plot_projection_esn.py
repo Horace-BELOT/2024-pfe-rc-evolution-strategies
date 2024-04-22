@@ -35,9 +35,11 @@ def plot_data(df: pd.DataFrame, save_path: Optional[str] = None) -> None:
     """"""
     marker_kwargs: Dict[str, Any] = {
         "marker": "o",
-        "markersize": 5
+        "markersize": 2
     }
+    df = df[(df["dim"] <= 784) & (df["dim"] >= 4)]
     df.sort_values(by=["tag", "dim"], inplace=True)
+    print(df)
     for tag in list(df.loc[:, "tag"].unique()):
         # creating mask
         m = df["tag"] == tag
@@ -46,6 +48,7 @@ def plot_data(df: pd.DataFrame, save_path: Optional[str] = None) -> None:
     plt.ylabel("Accuracy")
     plt.xlabel("Dimension")
     plt.legend(loc="lower right")
+    plt.xscale("log")
     plt.grid(True)
     if save_path is not None: plt.savefig(save_path)
     plt.show()
@@ -61,7 +64,7 @@ def main(
                                         TEST_IMAGES_FILEPATH, TEST_LABELS_FILEPATH)
     
     proj_dimensions: List[int] = [
-        1,2,3,4,
+        # 1,2,3,4,
         *range(5, 50, 5),
         *range(50, 100, 10),
         *range(100, 151, 25),
@@ -79,7 +82,7 @@ def main(
                 # crop_top=2, crop_bot=2, crop_left=2, crop_right=2,
                 # out_format="column",
                 hog={"image_shape": (28,28), "cell": (8,8), "block": (2,2), "keep_inputs": False},
-                projection=100,
+                projection=input_dim,
                 silent=True,
             )
         elif tag == "normal":
@@ -108,6 +111,8 @@ def main(
         # display the explained variance ratio with the number of components
         # print("Explained Variance Ratio of the components", np.sum(pca.explained_variance_ratio_))
         
+        # input_dim = x_train.shape[1]
+
         t_start: float = time.time()
         esn = ESN(
             n_inputs=input_dim,
@@ -121,7 +126,8 @@ def main(
             leaky_rate=0.7,
             wash_out=25,
             learn_method="pinv",
-            learning_rate=0.00001
+            learning_rate=0.00001,
+            allow_cut_connections=False,
         )
         pred_train = esn.fit(x_train, y_train)
         pred_test = esn.predict(x_test, continuation=False)
@@ -152,10 +158,14 @@ def main(
     # Updating plot
     plot_data(df, figure_path)
 
+
 if __name__ == "__main__":
-    # main(tag="normal")
-    # main(tag="hog")
-    # main(tag="pca")
-    # main(tag="umap")
-    df = pd.read_csv("figures/plot_projection_df.csv", sep=";")
-    plot_data(df, save_path="figures/plot_projection_graph.png")
+    path_df: str = "figures/presentation_reiteration/plot_proj_df_without_io_connection.csv"
+    plot_path: str = "figures/presentation_reiteration/plot_pptx.png"
+    # main(tag="normal", df_path=path_df, figure_path=plot_path)
+    # main(tag="hog", df_path=path_df, figure_path=plot_path)
+    # main(tag="pca", df_path=path_df, figure_path=plot_path)
+    # main(tag="umap", df_path=path_df, figure_path=plot_path)
+    df = pd.read_csv(path_df, sep=";")
+    print(df["tag"].unique())
+    plot_data(df, save_path=plot_path)

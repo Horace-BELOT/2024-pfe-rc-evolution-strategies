@@ -7,3 +7,4 @@ scikit-optimize
 matplotlib
 umap-learn
 cmaes
+torch
